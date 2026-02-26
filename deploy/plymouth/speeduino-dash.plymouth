@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Speeduino Dash
+Description=Boot splash for Speeduino Dashboard
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/speeduino-dash
+ScriptFile=/usr/share/plymouth/themes/speeduino-dash/speeduino-dash.script

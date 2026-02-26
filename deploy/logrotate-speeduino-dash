@@ -1,0 +1,11 @@
+# CSV log data files from speeduino-dash
+/var/log/speeduino-dash/*.csv {
+    daily
+    rotate 30
+    missingok
+    notifempty
+    compress
+    delaycompress
+    maxsize 50M
+    create 0644 root root
+}

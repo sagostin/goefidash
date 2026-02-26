@@ -1,0 +1,35 @@
+// Speeduino Dash — Plymouth boot splash script
+// Displays splash.png centered on a dark background with a pulsing effect
+
+bg = Image("splash.png");
+screen_w = Window.GetWidth();
+screen_h = Window.GetHeight();
+bg_w = bg.GetWidth();
+bg_h = bg.GetHeight();
+
+// Scale to fit screen while maintaining aspect ratio
+scale_x = screen_w / bg_w;
+scale_y = screen_h / bg_h;
+scale = Math.Min(scale_x, scale_y);
+scaled_bg = bg.Scale(bg_w * scale, bg_h * scale);
+
+sprite = Sprite(scaled_bg);
+sprite.SetX(screen_w / 2 - scaled_bg.GetWidth() / 2);
+sprite.SetY(screen_h / 2 - scaled_bg.GetHeight() / 2);
+sprite.SetZ(1);
+
+// Dark background fill
+Window.SetBackgroundTopColor(0.04, 0.02, 0.07);     // #0a0612
+Window.SetBackgroundBottomColor(0.04, 0.02, 0.07);
+
+// Hide password dialog / messages during boot
+fun message_callback(text) { }
+Plymouth.SetMessageFunction(message_callback);
+
+fun display_password_callback(prompt, bullets) {
+    // No password prompt in kiosk mode
+    return "";
+}
+
+fun display_normal_callback() { }
+Plymouth.SetDisplayNormalFunction(display_normal_callback);
