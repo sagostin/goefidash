@@ -1,0 +1,92 @@
+# ================================================================
+# Speeduino Dash — Sample Configuration
+# ================================================================
+# Copy this file to /etc/speeduino-dash/config.yaml or place it
+# alongside the binary. Environment variables and .env file
+# values override these settings.
+
+# ---- ECU Connection ----
+ecu:
+  type: speeduino          # "speeduino" or "demo"
+  port_path: /dev/ttySpeeduino
+  baud_rate: 115200
+  can_id: 0
+  stoich: 14.7             # Stoichiometric ratio (14.7 gasoline, 9.8 E85)
+  poll_hz: 20              # Polling rate in Hz
+
+# ---- GPS ----
+gps:
+  type: nmea               # "nmea", "demo", or "disabled"
+  port_path: /dev/ttyGPS
+  baud_rate: 9600
+
+# ---- Display ----
+display:
+  layout: race             # "race", "street", "minimal" (future)
+  units:
+    temperature: C          # "C" or "F"
+    pressure: psi           # "psi", "kpa", or "bar"
+    speed: kph              # "kph" or "mph"
+    afr: afr                # "afr" or "lambda"
+  thresholds:
+    rpm_warn: 6000
+    rpm_danger: 7000
+    rpm_max: 8000
+    clt_warn: 95            # °C — always stored in Celsius
+    clt_danger: 105
+    iat_warn: 60
+    iat_danger: 75
+    afr_lean_warn: 15.5
+    afr_rich_warn: 12.0
+    oil_p_warn: 15          # PSI
+    batt_low: 12.0
+    batt_high: 15.5
+    knock_warn: 3           # degrees retard
+
+# ---- Drivetrain (Gear Detection) ----
+# When gear_ratios is provided, the dashboard calculates the current
+# gear from RPM and vehicle speed. Without it, the ECU-reported gear
+# is used (if available).
+#
+# To find your ratios:
+#   1. Look up your transmission model (e.g., Tremec T56, Aisin AZ6)
+#   2. Multiply each gear ratio × final_drive to get overall ratio
+#   3. Measure or look up tire circumference (in meters)
+#
+# Formula:
+#   expected_speed = (RPM × tire_circum_m × 60) / (gear_ratio × final_drive × 1000)
+#   The dashboard compares actual speed vs expected_speed for each gear
+#   and picks the closest match within gear_tolerance.
+drivetrain:
+  # Example: Mazda MX-5 (NC) 6-speed manual
+  gear_ratios:
+    - 3.636    # 1st
+    - 2.375    # 2nd
+    - 1.761    # 3rd
+    - 1.346    # 4th
+    - 1.062    # 5th
+    - 0.843    # 6th
+  final_drive: 3.909
+  tire_circum_m: 1.95      # ~205/45R17
+  gear_tolerance: 0.15     # 15% tolerance for matching
+
+# ---- Vehicle Physics (HP Estimation) ----
+# These values are used to estimate wheel horsepower from
+# speed and acceleration using road-load physics:
+#   HP = [(mass×accel) + (½×ρ×Cd×A×v²) + (Crr×mass×g)] × v / 745.7
+vehicle:
+  mass_kg: 1200            # Vehicle mass (kg) including driver
+  drag_coeff: 0.32         # Aerodynamic drag coefficient (0.25-0.45 typical)
+  frontal_area_m2: 2.2     # Frontal area (m²) — typical sedan ~2.0–2.5
+  rolling_resist: 0.012    # Rolling resistance coefficient (0.005-0.02)
+
+# ---- Data Logging ----
+logging:
+  enabled: false
+  path: /var/log/speeduino-dash
+  interval_ms: 100
+
+# ---- Server ----
+server:
+  listen_addr: ":8080"
+  kiosk: false              # Set true on Pi for auto-launch Chromium

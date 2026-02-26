@@ -1,51 +1,60 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Speeduino Dash</title>
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <div id="dash" class="dash">
-        <!-- Status bar -->
-        <div class="status-bar">
-            <div class="status-left">
-                <span class="status-indicator" id="statusSync" title="ECU">●</span>
-                <span class="status-indicator" id="statusGPS" title="GPS">●</span>
+        <!-- Main values bar -->
+        <div class="main-bar">
+            <div class="rpm-section">
+                <span class="big-value" id="rpmValue">0</span>
+                <span class="big-label">RPM</span>
             </div>
-            <div class="status-center">
+
+            <div class="center-section">
                 <span class="engine-status" id="engineStatus">OFF</span>
+                <span class="gear-display" id="gearDisplay">N</span>
             </div>
-            <div class="status-right">
-                <span class="status-knock" id="knockIndicator" title="Knock detected">K</span>
-                <button class="btn-settings" id="btnConfig" title="Settings">⚙</button>
-            </div>
-        </div>
 
-        <!-- Main gauges -->
-        <div class="main-gauges">
-            <div class="gauge-rpm">
-                <canvas id="tachoCanvas" width="500" height="260"></canvas>
-                <div class="rpm-text">
-                    <span class="rpm-value" id="rpmValue">0</span>
-                    <span class="rpm-label">RPM</span>
+            <div class="speed-section">
+                <div class="speed-main">
+                    <span class="big-value cyan" id="speedValue">0</span>
+                    <span class="big-label" id="speedUnit">km/h</span>
                 </div>
-                <div class="gear-display" id="gearDisplay">N</div>
-            </div>
-
-            <div class="gauge-speed">
-                <canvas id="speedoCanvas" width="340" height="200"></canvas>
-                <div class="speed-text">
-                    <span class="speed-value" id="speedValue">0</span>
-                    <span class="speed-unit" id="speedUnit">km/h</span>
+                <div class="odo-box">
+                    <div class="odo-row">
+                        <span class="odo-label">ODO</span>
+                        <span class="odo-val" id="odoTotal">0.0</span>
+                        <span class="odo-unit" id="odoDistUnit">km</span>
+                    </div>
+                    <div class="odo-row">
+                        <span class="odo-label">TRIP</span>
+                        <span class="odo-val" id="odoTrip">0.0</span>
+                        <span class="odo-unit" id="odoTripUnit">km</span>
+                        <button class="odo-reset" id="btnResetTrip" title="Reset trip">↺</button>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Critical values - 2 rows of 3 -->
+        <!-- Status indicators -->
+        <div class="status-bar">
+            <div class="status-dots">
+                <span class="status-dot" id="statusSync" title="ECU">●</span>
+                <span class="status-dot" id="statusGPS" title="GPS">●</span>
+                <span class="status-knock" id="knockIndicator" title="Knock">K</span>
+            </div>
+            <a href="/settings.html" class="btn-settings" id="btnConfig" title="Settings">⚙</a>
+        </div>
+
+        <!-- Critical values grid -->
         <div class="critical-values">
-            <!-- Row 1: Most critical -->
             <div class="crit-card" id="afrCard">
                 <div class="crit-label">AFR</div>
                 <div class="crit-value" id="afrValue">--</div>
@@ -81,7 +90,6 @@
                 </div>
             </div>
 
-            <!-- Row 2: Temperature and knock -->
             <div class="crit-card" id="cltCard">
                 <div class="crit-label">COOLANT</div>
                 <div class="crit-value-row">
@@ -120,6 +128,23 @@
                     <div class="knock-fill" id="knockBar"></div>
                 </div>
             </div>
+
+            <!-- HP Estimation -->
+            <div class="crit-card hp-card" id="hpCard">
+                <div class="crit-label">~HP</div>
+                <div class="crit-value-row">
+                    <span class="crit-num hp-num" id="hpValue">0</span>
+                    <span class="crit-unit">WHP</span>
+                </div>
+                <div class="hp-peak-row">
+                    <span class="hp-peak-label">PEAK</span>
+                    <span class="hp-peak-val" id="hpPeak">0</span>
+                    <button class="hp-reset" id="btnResetHP" title="Reset peak">↺</button>
+                </div>
+                <div class="crit-bar-v">
+                    <div class="crit-bar-fill hp-gradient" id="hpBar"></div>
+                </div>
+            </div>
         </div>
 
         <!-- Warning overlay -->
@@ -130,107 +155,8 @@
         </div>
     </div>
 
-    <!-- Config modal -->
-    <div class="modal-overlay" id="configModal">
-        <div class="modal">
-            <div class="modal-header">
-                <h2>Settings</h2>
-                <button class="modal-close" id="btnConfigClose">✕</button>
-            </div>
-            <div class="modal-body">
-                <div class="config-section">
-                    <h3>Units</h3>
-                    <div class="config-row">
-                        <label>Pressure</label>
-                        <select id="cfgPressureUnit">
-                            <option value="psi">PSI</option>
-                            <option value="kpa">kPa</option>
-                            <option value="bar">bar</option>
-                        </select>
-                    </div>
-                    <div class="config-row">
-                        <label>Speed</label>
-                        <select id="cfgSpeedUnit">
-                            <option value="kph">km/h</option>
-                            <option value="mph">MPH</option>
-                        </select>
-                    </div>
-                    <div class="config-row">
-                        <label>Temperature</label>
-                        <select id="cfgTempUnit">
-                            <option value="C">°C</option>
-                            <option value="F">°F</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="config-section">
-                    <h3>Warnings</h3>
-                    <div class="config-row">
-                        <label>RPM Warn</label>
-                        <input type="number" id="cfgRpmWarn" value="6000">
-                    </div>
-                    <div class="config-row">
-                        <label>RPM Limit</label>
-                        <input type="number" id="cfgRpmDanger" value="7000">
-                    </div>
-                    <div class="config-row">
-                        <label>Oil Min (PSI)</label>
-                        <input type="number" id="cfgOilWarn" value="15">
-                    </div>
-                    <div class="config-row">
-                        <label>Knock Warn (°)</label>
-                        <input type="number" id="cfgKnockWarn" value="3">
-                    </div>
-                    <div class="config-row">
-                        <label>CLT Warn (°)</label>
-                        <input type="number" id="cfgCltWarn" value="95">
-                    </div>
-                    <div class="config-row">
-                        <label>CLT Danger (°)</label>
-                        <input type="number" id="cfgCltDanger" value="105">
-                    </div>
-                    <div class="config-row">
-                        <label>IAT Warn (°)</label>
-                        <input type="number" id="cfgIatWarn" value="60">
-                    </div>
-                    <div class="config-row">
-                        <label>IAT Danger (°)</label>
-                        <input type="number" id="cfgIatDanger" value="75">
-                    </div>
-                    <div class="config-row">
-                        <label>Batt Low (V)</label>
-                        <input type="number" id="cfgBattLow" value="12.0" step="0.1">
-                    </div>
-                    <div class="config-row">
-                        <label>Batt High (V)</label>
-                        <input type="number" id="cfgBattHigh" value="15.5" step="0.1">
-                    </div>
-                </div>
-                <div class="config-section">
-                    <h3>Connection</h3>
-                    <div class="config-row">
-                        <label>ECU Type</label>
-                        <select id="cfgEcuType">
-                            <option value="speeduino">Speeduino</option>
-                            <option value="demo">Demo</option>
-                        </select>
-                    </div>
-                    <div class="config-row">
-                        <label>GPS Type</label>
-                        <select id="cfgGpsType">
-                            <option value="nmea">NMEA</option>
-                            <option value="demo">Demo</option>
-                            <option value="disabled">Off</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-save" id="btnConfigSave">Save</button>
-            </div>
-        </div>
-    </div>
-
+    <script src="shared.js"></script>
     <script src="dash.js"></script>
 </body>
+
 </html>

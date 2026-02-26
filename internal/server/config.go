@@ -23,6 +23,12 @@ type Config struct {
 	// Display preferences
 	Display DisplayConfig `yaml:"display" json:"display"`
 
+	// Drivetrain (gear detection)
+	Drivetrain DrivetrainConfig `yaml:"drivetrain" json:"drivetrain"`
+
+	// Vehicle physics (HP estimation)
+	Vehicle VehicleConfig `yaml:"vehicle" json:"vehicle"`
+
 	// Logging
 	Logging LoggingConfig `yaml:"logging" json:"logging"`
 
@@ -63,6 +69,7 @@ type UnitsConfig struct {
 type ThresholdConfig struct {
 	RPMWarn     uint16  `yaml:"rpm_warn" json:"rpmWarn"`
 	RPMDanger   uint16  `yaml:"rpm_danger" json:"rpmDanger"`
+	RPMMax      uint16  `yaml:"rpm_max" json:"rpmMax"`
 	CLTWarn     float64 `yaml:"clt_warn" json:"cltWarn"`     // °C
 	CLTDanger   float64 `yaml:"clt_danger" json:"cltDanger"` // °C
 	IATWarn     float64 `yaml:"iat_warn" json:"iatWarn"`     // °C
@@ -73,6 +80,25 @@ type ThresholdConfig struct {
 	BattLow     float64 `yaml:"batt_low" json:"battLow"`
 	BattHigh    float64 `yaml:"batt_high" json:"battHigh"`
 	KnockWarn   uint8   `yaml:"knock_warn" json:"knockWarn"` // degrees retard
+}
+
+// DrivetrainConfig holds gear ratios for RPM-based gear detection.
+// If GearRatios is non-empty the dashboard will calculate the current gear
+// from RPM and vehicle speed instead of using the ECU's reported value.
+type DrivetrainConfig struct {
+	ShowGear      bool      `yaml:"show_gear" json:"showGear"`
+	GearRatios    []float64 `yaml:"gear_ratios" json:"gearRatios"`       // [1st, 2nd, 3rd, ...]
+	FinalDrive    float64   `yaml:"final_drive" json:"finalDrive"`       // Diff ratio
+	TireCircumM   float64   `yaml:"tire_circum_m" json:"tireCircumM"`    // Tire circumference in meters
+	GearTolerance float64   `yaml:"gear_tolerance" json:"gearTolerance"` // Match tolerance (0.0-1.0), default 0.15
+}
+
+// VehicleConfig holds physical parameters for HP estimation.
+type VehicleConfig struct {
+	MassKg        float64 `yaml:"mass_kg" json:"massKg"`                // Vehicle mass in kg
+	DragCoeff     float64 `yaml:"drag_coeff" json:"dragCoeff"`          // Aerodynamic drag coefficient
+	FrontalAreaM2 float64 `yaml:"frontal_area_m2" json:"frontalAreaM2"` // Frontal area in m²
+	RollingResist float64 `yaml:"rolling_resist" json:"rollingResist"`  // Rolling resistance coefficient
 }
 
 type LoggingConfig struct {
@@ -112,6 +138,7 @@ func DefaultConfig() *Config {
 			Thresholds: ThresholdConfig{
 				RPMWarn:     6000,
 				RPMDanger:   7000,
+				RPMMax:      8000,
 				CLTWarn:     95,
 				CLTDanger:   105,
 				IATWarn:     60,
@@ -123,7 +150,20 @@ func DefaultConfig() *Config {
 				BattHigh:    15.5,
 				KnockWarn:   3,
 			},
-			Layout: "race",
+			Layout: "classic",
+		},
+		Drivetrain: DrivetrainConfig{
+			ShowGear:      true,
+			GearRatios:    nil,
+			FinalDrive:    3.73,
+			TireCircumM:   1.95,
+			GearTolerance: 0.15,
+		},
+		Vehicle: VehicleConfig{
+			MassKg:        1200,
+			DragCoeff:     0.32,
+			FrontalAreaM2: 2.2,
+			RollingResist: 0.012,
 		},
 		Logging: LoggingConfig{
 			Enabled:  false,

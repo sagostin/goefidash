@@ -1,0 +1,306 @@
+/* ================================================================
+   SPEEDUINO DASH — Settings Page Styles
+   ================================================================ */
+
+:root {
+    --bg-primary: #0a0612;
+    --bg-secondary: #120a1f;
+    --bg-card: #1a1029;
+    --purple-light: #d8b4fe;
+    --purple: #a855f7;
+    --purple-dark: #6b21a8;
+    --cyan: #22d3ee;
+    --amber: #fbbf24;
+    --red: #f87171;
+    --green: #4ade80;
+    --text-primary: #faf5ff;
+    --text-secondary: #c4b5fd;
+    --text-dim: #8b5cf6;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html,
+body {
+    min-height: 100%;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    cursor: default;
+}
+
+.settings-page {
+    max-width: 560px;
+    margin: 0 auto;
+    padding-bottom: 100px;
+}
+
+/* ---- Header ---- */
+.settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background: var(--bg-secondary);
+    border-bottom: 2px solid var(--purple-dark);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.settings-header h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--purple-light);
+    letter-spacing: 2px;
+}
+
+.back-btn {
+    color: var(--cyan);
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 8px 14px;
+    border: 1px solid var(--cyan);
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.back-btn:hover {
+    background: rgba(34, 211, 238, 0.1);
+}
+
+.save-btn {
+    background: var(--purple);
+    color: white;
+    border: none;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 8px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    transition: background 0.2s;
+}
+
+.save-btn:hover {
+    background: var(--purple-light);
+}
+
+/* ---- Live Preview Bar ---- */
+.live-preview {
+    display: flex;
+    justify-content: space-around;
+    padding: 10px 20px;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--purple-dark);
+}
+
+.preview-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.preview-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+}
+
+.preview-val {
+    font-size: 20px;
+    font-weight: 900;
+    color: var(--cyan);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---- Settings Body ---- */
+.settings-body {
+    padding: 12px 20px;
+}
+
+.cfg-section {
+    background: var(--bg-secondary);
+    border: 1px solid var(--purple-dark);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+}
+
+.cfg-section h2 {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--purple);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--purple-dark);
+}
+
+.section-hint {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-dim);
+    text-transform: none;
+    letter-spacing: 0;
+    margin-left: 8px;
+}
+
+.cfg-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(107, 33, 168, 0.2);
+}
+
+.cfg-row:last-child {
+    border-bottom: none;
+}
+
+.cfg-row label {
+    font-size: 15px;
+    color: var(--text-secondary);
+}
+
+.cfg-row input,
+.cfg-row select {
+    background: var(--bg-card);
+    border: 2px solid var(--purple-dark);
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: var(--text-primary);
+    font-size: 15px;
+    width: 140px;
+    transition: border-color 0.2s;
+}
+
+.cfg-row input[type="checkbox"] {
+    width: auto;
+    accent-color: var(--purple);
+}
+
+.cfg-row input:focus,
+.cfg-row select:focus {
+    outline: none;
+    border-color: var(--purple);
+}
+
+/* ---- Gear Ratios ---- */
+.gear-section {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--purple-dark);
+}
+
+.gear-header {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--purple);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+}
+
+.gear-hint {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-dim);
+    text-transform: none;
+    letter-spacing: 0;
+    margin-left: 8px;
+}
+
+.gear-ratio-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.gear-num {
+    width: 24px;
+    font-size: 16px;
+    font-weight: 900;
+    color: var(--cyan);
+    text-align: center;
+}
+
+.gear-ratio-input {
+    flex: 1;
+    background: var(--bg-card);
+    border: 2px solid var(--purple-dark);
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+.gear-ratio-input:focus {
+    outline: none;
+    border-color: var(--purple);
+}
+
+.gear-learn-btn {
+    background: rgba(168, 85, 247, 0.2);
+    border: 1px solid var(--purple-dark);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 12px;
+    cursor: pointer;
+    min-width: 60px;
+    text-align: center;
+    transition: all 0.2s;
+}
+
+.gear-learn-btn:hover {
+    background: rgba(168, 85, 247, 0.4);
+    color: var(--purple-light);
+}
+
+/* ---- Footer ---- */
+.settings-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 16px 20px;
+    background: var(--bg-secondary);
+    border-top: 2px solid var(--purple-dark);
+    text-align: center;
+    z-index: 10;
+}
+
+.save-btn-lg {
+    background: var(--purple);
+    color: white;
+    border: none;
+    font-size: 16px;
+    font-weight: 700;
+    padding: 14px 40px;
+    border-radius: 10px;
+    cursor: pointer;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    box-shadow: 0 4px 25px rgba(168, 85, 247, 0.4);
+    transition: all 0.2s;
+    width: 100%;
+    max-width: 520px;
+}
+
+.save-btn-lg:hover {
+    background: var(--purple-light);
+    box-shadow: 0 6px 30px rgba(168, 85, 247, 0.6);
+}
