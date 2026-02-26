@@ -22,7 +22,7 @@ gps:
 
 # ---- Display ----
 display:
-  layout: race             # "race", "street", "minimal" (future)
+  layout: classic             # "classic", "sweep", "minimal" (future)
   units:
     temperature: C          # "C" or "F"
     pressure: psi           # "psi", "kpa", or "bar"

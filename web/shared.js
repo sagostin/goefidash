@@ -11,10 +11,11 @@ window.SpeeduinoDash = (function () {
     let ws = null;
     let reconnectTimer = null;
     let lastFrame = null;
+    let connected = false;
 
     let thresholds = {
         rpmWarn: 6000, rpmDanger: 7000, rpmMax: 8000,
-        oilMin: 15,
+        oilPWarn: 15,
         cltWarn: 95, cltDanger: 105,
         iatWarn: 60, iatDanger: 75,
         knockWarn: 3,
@@ -40,6 +41,7 @@ window.SpeeduinoDash = (function () {
     // Callbacks — pages register these
     let onFrame = null;
     let onConfig = null;
+    let onConnectionChange = null;
 
     // ---- WebSocket ----
     function connect() {
@@ -48,6 +50,8 @@ window.SpeeduinoDash = (function () {
 
         ws.onopen = () => {
             if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+            connected = true;
+            if (onConnectionChange) onConnectionChange(true);
         };
 
         ws.onmessage = (evt) => {
@@ -64,7 +68,7 @@ window.SpeeduinoDash = (function () {
             }
         };
 
-        ws.onclose = () => scheduleReconnect();
+        ws.onclose = () => { connected = false; if (onConnectionChange) onConnectionChange(false); scheduleReconnect(); };
         ws.onerror = () => ws.close();
     }
 
@@ -158,8 +162,10 @@ window.SpeeduinoDash = (function () {
         get showGear() { return showGear; },
         get vehicle() { return vehicle; },
         get peakHP() { return peakHP; },
+        get connected() { return connected; },
         set onFrame(fn) { onFrame = fn; },
         set onConfig(fn) { onConfig = fn; },
+        set onConnectionChange(fn) { onConnectionChange = fn; },
         applyConfig,
         toFahrenheit, toCelsius, displayTemp, formatTemp,
         convertPressure, convertSpeed, convertDistance,

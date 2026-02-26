@@ -25,10 +25,10 @@ A realtime automotive dashboard for **Speeduino** ECUs, built in Go and served a
 # Clone and build
 git clone https://github.com/shaunagostinho/speeduino-dash.git
 cd speeduino-dash
-go build -o speeduino-dash ./cmd/speeduino-dash/
+make              # or: go build -o speeduino-dash ./cmd/speeduino-dash/
 
 # Run in demo mode (simulated ECU + GPS data)
-./speeduino-dash --demo --listen :8080
+make run          # or: ./speeduino-dash --demo --listen :8080
 
 # Open http://localhost:8080 in your browser
 ```
@@ -36,11 +36,14 @@ go build -o speeduino-dash ./cmd/speeduino-dash/
 ### On Raspberry Pi
 
 ```bash
-# Cross-compile for Pi
-GOOS=linux GOARCH=arm64 go build -o speeduino-dash ./cmd/speeduino-dash/
+# Cross-compile for Pi 4/5 (64-bit)
+make pi
 
-# Install (creates config, systemd service, udev rules)
+# Install (creates config, systemd service, udev rules, log rotation)
 sudo bash deploy/install.sh
+
+# Full kiosk mode (boot splash + auto-login + Chromium service)
+sudo bash deploy/setup-kiosk.sh
 ```
 
 ## Configuration
@@ -101,17 +104,28 @@ internal/
   gps/
     provider.go         GPS Provider interface + Data struct
     nmea.go             NMEA 0183 parser + demo GPS
+  logger/
+    logger.go           CSV data logger with file rotation
   server/
     server.go           WebSocket hub, polling loops, odometer
-    config.go           YAML + .env config system
+    config.go           YAML + .env config system (deep-merge updates)
 web/
     index.html          Dashboard layout
     style.css           Dark automotive theme
-    dash.js             Canvas gauges, WebSocket client
+    dash.js             Gauges, warnings, WebSocket client
+    shared.js           Shared state, unit conversions, gear detection, HP
+    settings.html       Configuration page
+    settings.js         Settings logic, gear auto-learn
+    settings.css        Settings page styles
 deploy/
-    speeduino-dash.service   systemd unit
-    kiosk.sh                 Chromium kiosk launcher
     install.sh               One-shot Pi installer
+    setup-kiosk.sh           Boot splash + auto-login + Chromium service
+    speeduino-dash.service   systemd unit
+    kiosk.sh                 Chromium kiosk launcher (legacy)
+    logrotate-speeduino-dash Log rotation config
+    splash.png               Boot splash image
+    plymouth/                Plymouth theme files
+Makefile                     Build, cross-compile, install, test
 ```
 
 ### ECU Provider Interface

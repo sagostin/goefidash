@@ -148,7 +148,7 @@
             const oilVal = D.units.pressure === 'psi' ? ecu.oilPressure : D.convertPressure(ecu.oilPressure * 6.895);
             $('oilValue').textContent = Math.round(oilVal);
             $('oilBar').style.width = Math.min(ecu.oilPressure / 80 * 100, 100) + '%';
-            setCardState('oilCard', ecu.oilPressure < t.oilMin && ecu.running ? 'danger' : '');
+            setCardState('oilCard', ecu.oilPressure < t.oilPWarn && ecu.running ? 'danger' : '');
 
             // Coolant
             const cltC = ecu.coolant;
@@ -190,7 +190,7 @@
             let wt = '', wp = '';
             if (cltC >= t.cltDanger) { wt = 'COOLANT ' + D.formatTemp(cltC); wp = 'critical'; }
             else if (iatC >= t.iatDanger) { wt = 'INTAKE HOT ' + D.formatTemp(iatC); wp = 'critical'; }
-            else if (ecu.oilPressure < t.oilMin && ecu.running && ecu.rpm > 1000) {
+            else if (ecu.oilPressure < t.oilPWarn && ecu.running && ecu.rpm > 1000) {
                 wt = 'LOW OIL ' + Math.round(oilVal) + ' ' + (D.units.pressure === 'psi' ? 'PSI' : D.units.pressure === 'bar' ? 'BAR' : 'kPa');
                 wp = 'critical';
             }
@@ -230,6 +230,9 @@
 
     // ---- Init ----
     window.addEventListener('load', () => {
+        D.onConnectionChange = (connected) => {
+            $('connectionBanner').classList.toggle('active', !connected);
+        };
         D.connect();
         requestAnimationFrame(updateDisplay);
     });

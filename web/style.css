@@ -587,3 +587,34 @@ body {
         background: rgba(248, 113, 238, 0.3);
     }
 }
+
+/* ================================================================
+   CONNECTION BANNER
+   ================================================================ */
+.connection-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: rgba(251, 191, 36, 0.15);
+    border-bottom: 2px solid var(--amber);
+    color: var(--amber);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-align: center;
+    padding: 8px;
+    z-index: 200;
+    display: none;
+    backdrop-filter: blur(4px);
+    animation: flash 1s infinite alternate;
+}
+
+.connection-banner.active {
+    display: block;
+}
+
+.conn-dot {
+    color: var(--red);
+    margin-right: 6px;
+}

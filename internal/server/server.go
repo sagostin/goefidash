@@ -53,12 +53,14 @@ type wsClient struct {
 
 // Frame is the JSON structure sent to all WebSocket clients.
 type Frame struct {
-	ECU    *ecu.DataFrame `json:"ecu,omitempty"`
-	GPS    *gps.Data      `json:"gps,omitempty"`
-	Config *DisplayConfig `json:"config,omitempty"`
-	Odo    *OdoData       `json:"odo,omitempty"`
-	Speed  *SpeedData     `json:"speed,omitempty"` // Calculated best-available speed
-	Stamp  int64          `json:"stamp"`           // Unix ms
+	ECU        *ecu.DataFrame    `json:"ecu,omitempty"`
+	GPS        *gps.Data         `json:"gps,omitempty"`
+	Config     *DisplayConfig    `json:"config,omitempty"`
+	Drivetrain *DrivetrainConfig `json:"drivetrain,omitempty"`
+	Vehicle    *VehicleConfig    `json:"vehicle,omitempty"`
+	Odo        *OdoData          `json:"odo,omitempty"`
+	Speed      *SpeedData        `json:"speed,omitempty"` // Calculated best-available speed
+	Stamp      int64             `json:"stamp"`           // Unix ms
 }
 
 // OdoData is the odometer info sent to clients.
@@ -174,9 +176,11 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	s.odoMu.Unlock()
 
 	cfgFrame := Frame{
-		Config: &s.cfg.Display,
-		Odo:    odo,
-		Stamp:  time.Now().UnixMilli(),
+		Config:     &s.cfg.Display,
+		Drivetrain: &s.cfg.Drivetrain,
+		Vehicle:    &s.cfg.Vehicle,
+		Odo:        odo,
+		Stamp:      time.Now().UnixMilli(),
 	}
 	if data, err := json.Marshal(cfgFrame); err == nil {
 		client.send <- data

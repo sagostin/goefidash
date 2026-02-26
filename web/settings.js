@@ -39,7 +39,7 @@
                 const tempF = $('cfgTempUnit').value === 'F';
                 $('cfgRpmWarn').value = t.rpmWarn;
                 $('cfgRpmDanger').value = t.rpmDanger;
-                $('cfgOilWarn').value = t.oilPWarn || t.oilMin || 15;
+                $('cfgOilWarn').value = t.oilPWarn || 15;
                 $('cfgKnockWarn').value = t.knockWarn;
                 $('cfgCltWarn').value = Math.round(tempF ? D.toFahrenheit(t.cltWarn) : t.cltWarn);
                 $('cfgCltDanger').value = Math.round(tempF ? D.toFahrenheit(t.cltDanger) : t.cltDanger);

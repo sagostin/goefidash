@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -315,9 +316,50 @@ func (c *Config) ToJSON() ([]byte, error) {
 	return json.Marshal(c)
 }
 
-// UpdateFromJSON applies a JSON config update.
+// UpdateFromJSON applies a partial JSON config update by deep-merging
+// incoming fields into the existing config. Fields not present in the
+// incoming JSON are preserved (e.g. port paths, baud rates, logging).
 func (c *Config) UpdateFromJSON(data []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return json.Unmarshal(data, c)
+
+	// Marshal current config to a generic map
+	currentBytes, err := json.Marshal(c)
+	if err != nil {
+		return fmt.Errorf("marshal current config: %w", err)
+	}
+	var base map[string]interface{}
+	if err := json.Unmarshal(currentBytes, &base); err != nil {
+		return fmt.Errorf("unmarshal current config: %w", err)
+	}
+
+	// Unmarshal incoming partial update to a map
+	var patch map[string]interface{}
+	if err := json.Unmarshal(data, &patch); err != nil {
+		return fmt.Errorf("unmarshal patch: %w", err)
+	}
+
+	// Deep merge patch into base
+	deepMerge(base, patch)
+
+	// Marshal merged result and unmarshal back into the config struct
+	merged, err := json.Marshal(base)
+	if err != nil {
+		return fmt.Errorf("marshal merged config: %w", err)
+	}
+	return json.Unmarshal(merged, c)
+}
+
+// deepMerge recursively merges src into dst. For nested maps, values are
+// merged rather than replaced. For all other types, src overwrites dst.
+func deepMerge(dst, src map[string]interface{}) {
+	for key, srcVal := range src {
+		if srcMap, ok := srcVal.(map[string]interface{}); ok {
+			if dstMap, ok := dst[key].(map[string]interface{}); ok {
+				deepMerge(dstMap, srcMap)
+				continue
+			}
+		}
+		dst[key] = srcVal
+	}
 }
