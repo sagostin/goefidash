@@ -1,0 +1,22 @@
+[Unit]
+Description=Speeduino Dashboard
+After=multi-user.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/speeduino-dash --config /etc/speeduino-dash/config.yaml
+Restart=always
+RestartSec=3
+User=pi
+Group=pi
+# Allow access to serial ports
+SupplementaryGroups=dialout
+
+# Hardening
+ProtectSystem=strict
+ReadWritePaths=/etc/speeduino-dash /var/log/speeduino-dash
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

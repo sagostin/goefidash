@@ -1,0 +1,19 @@
+# Binaries
+speeduino-dash
+*.exe
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config (local overrides)
+.env
+config.yaml
+
+# Logs
+*.csv
+*.log
