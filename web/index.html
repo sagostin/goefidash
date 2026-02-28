@@ -10,149 +10,362 @@
 
 <body>
     <div id="dash" class="dash">
-        <!-- Main values bar -->
-        <div class="main-bar">
-            <div class="rpm-section">
-                <span class="big-value" id="rpmValue">0</span>
-                <span class="big-label">RPM</span>
-            </div>
 
-            <div class="center-section">
-                <span class="engine-status" id="engineStatus">OFF</span>
-                <span class="gear-display" id="gearDisplay">N</span>
-            </div>
-
-            <div class="speed-section">
-                <div class="speed-main">
-                    <span class="big-value cyan" id="speedValue">0</span>
-                    <span class="big-label" id="speedUnit">km/h</span>
+        <!-- ============================================================
+             LAYOUT: CLASSIC — Original card-grid layout
+             ============================================================ -->
+        <div id="layout-classic" class="layout active">
+            <div class="main-bar">
+                <div class="rpm-section">
+                    <span class="big-value" id="rpmValue">0</span>
+                    <span class="big-label">RPM</span>
                 </div>
-                <div class="odo-box">
-                    <div class="odo-row">
-                        <span class="odo-label">ODO</span>
-                        <span class="odo-val" id="odoTotal">0.0</span>
-                        <span class="odo-unit" id="odoDistUnit">km</span>
+                <div class="center-section">
+                    <span class="engine-status" id="engineStatus">OFF</span>
+                    <span class="gear-display" id="gearDisplay">N</span>
+                </div>
+                <div class="speed-section">
+                    <div class="speed-main">
+                        <span class="big-value cyan" id="speedValue">0</span>
+                        <span class="big-label" id="speedUnit">km/h</span>
                     </div>
-                    <div class="odo-row">
-                        <span class="odo-label">TRIP</span>
-                        <span class="odo-val" id="odoTrip">0.0</span>
-                        <span class="odo-unit" id="odoTripUnit">km</span>
-                        <button class="odo-reset" id="btnResetTrip" title="Reset trip">↺</button>
+                    <div class="odo-box">
+                        <div class="odo-row">
+                            <span class="odo-label">ODO</span>
+                            <span class="odo-val" id="odoTotal">0.0</span>
+                            <span class="odo-unit" id="odoDistUnit">km</span>
+                        </div>
+                        <div class="odo-row">
+                            <span class="odo-label">TRIP</span>
+                            <span class="odo-val" id="odoTrip">0.0</span>
+                            <span class="odo-unit" id="odoTripUnit">km</span>
+                            <button class="odo-reset" id="btnResetTrip" title="Reset trip">↺</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="status-bar">
+                <div class="status-dots">
+                    <span class="status-dot" id="statusSync" title="ECU">●</span>
+                    <span class="status-dot" id="statusGPS" title="GPS">●</span>
+                    <span class="status-knock" id="knockIndicator" title="Knock">K</span>
+                </div>
+                <a href="/settings.html" class="btn-settings" id="btnConfig" title="Settings">⚙</a>
+            </div>
+            <div class="critical-values">
+                <div class="crit-card" id="afrCard">
+                    <div class="crit-label">AFR</div>
+                    <div class="crit-value" id="afrValue">--</div>
+                    <div class="crit-bar">
+                        <div class="crit-marker" id="afrMarker"></div>
+                        <div class="afr-zones">
+                            <span class="rich">R</span>
+                            <span class="stoich">λ</span>
+                            <span class="lean">L</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="crit-card" id="boostCard">
+                    <div class="crit-label">BOOST</div>
+                    <div class="crit-value-row">
+                        <span class="crit-num" id="boostValue">--</span>
+                        <span class="crit-unit" id="boostUnit">PSI</span>
+                    </div>
+                    <div class="crit-bar-v">
+                        <div class="crit-bar-fill" id="boostBar"></div>
+                    </div>
+                </div>
+                <div class="crit-card" id="oilCard">
+                    <div class="crit-label">OIL</div>
+                    <div class="crit-value-row">
+                        <span class="crit-num" id="oilValue">--</span>
+                        <span class="crit-unit" id="oilUnit">PSI</span>
+                    </div>
+                    <div class="crit-bar-v">
+                        <div class="crit-bar-fill warn-low" id="oilBar"></div>
+                    </div>
+                </div>
+                <div class="crit-card" id="cltCard">
+                    <div class="crit-label">COOLANT</div>
+                    <div class="crit-value-row">
+                        <span class="crit-num" id="cltValue">--</span>
+                        <span class="crit-unit" id="cltUnit">°C</span>
+                    </div>
+                    <div class="crit-bar-v">
+                        <div class="crit-bar-fill temp-gradient" id="cltBar"></div>
+                    </div>
+                </div>
+                <div class="crit-card" id="iatCard">
+                    <div class="crit-label">INTAKE</div>
+                    <div class="crit-value-row">
+                        <span class="crit-num" id="iatValue">--</span>
+                        <span class="crit-unit" id="iatUnit">°C</span>
+                    </div>
+                    <div class="crit-bar-v">
+                        <div class="crit-bar-fill iat-gradient" id="iatBar"></div>
+                    </div>
+                </div>
+                <div class="crit-card" id="knockCard">
+                    <div class="crit-label">KNOCK</div>
+                    <div class="crit-knock-row">
+                        <div class="knock-item">
+                            <span class="knock-label">CNT</span>
+                            <span class="knock-value" id="knockCount">0</span>
+                        </div>
+                        <div class="knock-item">
+                            <span class="knock-label">RET</span>
+                            <span class="knock-value" id="knockRetard">0°</span>
+                        </div>
+                    </div>
+                    <div class="knock-bar">
+                        <div class="knock-fill" id="knockBar"></div>
+                    </div>
+                </div>
+                <div class="crit-card hp-card" id="hpCard">
+                    <div class="crit-label">~HP</div>
+                    <div class="crit-value-row">
+                        <span class="crit-num hp-num" id="hpValue">0</span>
+                        <span class="crit-unit">WHP</span>
+                    </div>
+                    <div class="hp-peak-row">
+                        <span class="hp-peak-label">PEAK</span>
+                        <span class="hp-peak-val" id="hpPeak">0</span>
+                        <button class="hp-reset" id="btnResetHP" title="Reset peak">↺</button>
+                    </div>
+                    <div class="crit-bar-v">
+                        <div class="crit-bar-fill hp-gradient" id="hpBar"></div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Status indicators -->
-        <div class="status-bar">
-            <div class="status-dots">
-                <span class="status-dot" id="statusSync" title="ECU">●</span>
-                <span class="status-dot" id="statusGPS" title="GPS">●</span>
-                <span class="status-knock" id="knockIndicator" title="Knock">K</span>
+        <!-- ============================================================
+             LAYOUT: SWEEP — Arc tachometer, motorsport-inspired
+             ============================================================ -->
+        <div id="layout-sweep" class="layout">
+            <!-- RPM Arc Section -->
+            <div class="sweep-arc-section">
+                <svg class="sweep-arc-svg" viewBox="0 0 400 220" preserveAspectRatio="xMidYMid meet">
+                    <defs>
+                        <linearGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#a855f7" />
+                            <stop offset="60%" stop-color="#22d3ee" />
+                            <stop offset="85%" stop-color="#fbbf24" />
+                            <stop offset="100%" stop-color="#f87171" />
+                        </linearGradient>
+                    </defs>
+                    <!-- Background arc -->
+                    <path class="sweep-arc-bg" d="M 40 200 A 160 160 0 0 1 360 200" fill="none"
+                        stroke="rgba(107,33,168,0.3)" stroke-width="18" stroke-linecap="round" />
+                    <!-- Active arc -->
+                    <path class="sweep-arc-active" id="sweepArc" d="M 40 200 A 160 160 0 0 1 360 200" fill="none"
+                        stroke="url(#arcGrad)" stroke-width="18" stroke-linecap="round" stroke-dasharray="502"
+                        stroke-dashoffset="502" />
+                    <!-- Tick marks -->
+                    <g class="sweep-ticks" id="sweepTicks"></g>
+                </svg>
+                <div class="sweep-center-values">
+                    <span class="sweep-rpm" id="sweepRpmValue">0</span>
+                    <span class="sweep-rpm-label">RPM</span>
+                    <span class="sweep-engine-status" id="sweepEngineStatus">OFF</span>
+                </div>
             </div>
-            <a href="/settings.html" class="btn-settings" id="btnConfig" title="Settings">⚙</a>
+
+            <!-- Speed + Gear Row -->
+            <div class="sweep-main-row">
+                <div class="sweep-speed-block">
+                    <span class="sweep-speed" id="sweepSpeedValue">0</span>
+                    <span class="sweep-speed-unit" id="sweepSpeedUnit">km/h</span>
+                </div>
+                <div class="sweep-gear-block">
+                    <span class="sweep-gear" id="sweepGearDisplay">N</span>
+                </div>
+                <div class="sweep-hp-block">
+                    <span class="sweep-hp-label">~WHP</span>
+                    <span class="sweep-hp" id="sweepHpValue">0</span>
+                    <span class="sweep-hp-peak">PEAK <span id="sweepHpPeak">0</span></span>
+                </div>
+            </div>
+
+            <!-- Gauges Strip -->
+            <div class="sweep-gauges">
+                <div class="sweep-gauge" id="sweepAfrCard">
+                    <span class="sweep-gauge-label">AFR</span>
+                    <span class="sweep-gauge-val" id="sweepAfrValue">--</span>
+                    <div class="sweep-gauge-bar">
+                        <div class="sweep-gauge-fill afr-gradient" id="sweepAfrBar"></div>
+                    </div>
+                </div>
+                <div class="sweep-gauge" id="sweepBoostCard">
+                    <span class="sweep-gauge-label">BOOST</span>
+                    <span class="sweep-gauge-val" id="sweepBoostValue">--</span>
+                    <div class="sweep-gauge-bar">
+                        <div class="sweep-gauge-fill" id="sweepBoostBar"></div>
+                    </div>
+                </div>
+                <div class="sweep-gauge" id="sweepOilCard">
+                    <span class="sweep-gauge-label">OIL</span>
+                    <span class="sweep-gauge-val" id="sweepOilValue">--</span>
+                    <div class="sweep-gauge-bar">
+                        <div class="sweep-gauge-fill warn-low" id="sweepOilBar"></div>
+                    </div>
+                </div>
+                <div class="sweep-gauge" id="sweepCltCard">
+                    <span class="sweep-gauge-label">CLT</span>
+                    <span class="sweep-gauge-val" id="sweepCltValue">--</span>
+                    <div class="sweep-gauge-bar">
+                        <div class="sweep-gauge-fill temp-gradient" id="sweepCltBar"></div>
+                    </div>
+                </div>
+                <div class="sweep-gauge" id="sweepIatCard">
+                    <span class="sweep-gauge-label">IAT</span>
+                    <span class="sweep-gauge-val" id="sweepIatValue">--</span>
+                    <div class="sweep-gauge-bar">
+                        <div class="sweep-gauge-fill iat-gradient" id="sweepIatBar"></div>
+                    </div>
+                </div>
+                <div class="sweep-gauge" id="sweepKnockCard">
+                    <span class="sweep-gauge-label">KNOCK</span>
+                    <span class="sweep-gauge-val" id="sweepKnockValue">0°</span>
+                    <div class="sweep-gauge-bar">
+                        <div class="sweep-gauge-fill knock-gradient" id="sweepKnockBar"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status dots + settings -->
+            <div class="sweep-status-bar">
+                <span class="status-dot" id="sweepStatusSync" title="ECU">●</span>
+                <span class="status-dot" id="sweepStatusGPS" title="GPS">●</span>
+                <span class="status-knock" id="sweepKnockIndicator" title="Knock">K</span>
+                <a href="/settings.html" class="btn-settings" title="Settings">⚙</a>
+            </div>
         </div>
 
-        <!-- Critical values grid -->
-        <div class="critical-values">
-            <div class="crit-card" id="afrCard">
-                <div class="crit-label">AFR</div>
-                <div class="crit-value" id="afrValue">--</div>
-                <div class="crit-bar">
-                    <div class="crit-marker" id="afrMarker"></div>
-                    <div class="afr-zones">
-                        <span class="rich">R</span>
-                        <span class="stoich">λ</span>
-                        <span class="lean">L</span>
+        <!-- ============================================================
+             LAYOUT: RACE — F1/GT3 inspired, maximum density
+             ============================================================ -->
+        <div id="layout-race" class="layout">
+            <!-- Full-width RPM Bar -->
+            <div class="race-rpm-strip">
+                <div class="race-rpm-bar-bg">
+                    <div class="race-rpm-bar-fill" id="raceRpmBar"></div>
+                </div>
+                <div class="race-rpm-numbers">
+                    <span>0</span><span>1</span><span>2</span><span>3</span><span>4</span>
+                    <span>5</span><span>6</span><span>7</span><span>8</span>
+                </div>
+                <span class="race-rpm-value" id="raceRpmValue">0</span>
+            </div>
+
+            <!-- Central Gear + Speed -->
+            <div class="race-center">
+                <div class="race-speed-col">
+                    <span class="race-speed" id="raceSpeedValue">0</span>
+                    <span class="race-speed-unit" id="raceSpeedUnit">km/h</span>
+                </div>
+                <div class="race-gear-col">
+                    <span class="race-gear" id="raceGearDisplay">N</span>
+                </div>
+                <div class="race-info-col">
+                    <div class="race-info-item">
+                        <span class="race-info-label">~WHP</span>
+                        <span class="race-info-val" id="raceHpValue">0</span>
+                    </div>
+                    <div class="race-info-item">
+                        <span class="race-info-label" id="raceEngineStatus">OFF</span>
                     </div>
                 </div>
             </div>
 
-            <div class="crit-card" id="boostCard">
-                <div class="crit-label">BOOST</div>
-                <div class="crit-value-row">
-                    <span class="crit-num" id="boostValue">--</span>
-                    <span class="crit-unit" id="boostUnit">PSI</span>
+            <!-- Compact Values Strip -->
+            <div class="race-values">
+                <div class="race-val-cell" id="raceAfrCard">
+                    <span class="race-val-label">AFR</span>
+                    <span class="race-val-num" id="raceAfrValue">--</span>
                 </div>
-                <div class="crit-bar-v">
-                    <div class="crit-bar-fill" id="boostBar"></div>
+                <div class="race-val-cell" id="raceBoostCard">
+                    <span class="race-val-label">BOOST</span>
+                    <span class="race-val-num" id="raceBoostValue">--</span>
+                    <span class="race-val-unit" id="raceBoostUnit">PSI</span>
                 </div>
-            </div>
-
-            <div class="crit-card" id="oilCard">
-                <div class="crit-label">OIL</div>
-                <div class="crit-value-row">
-                    <span class="crit-num" id="oilValue">--</span>
-                    <span class="crit-unit" id="oilUnit">PSI</span>
+                <div class="race-val-cell" id="raceOilCard">
+                    <span class="race-val-label">OIL</span>
+                    <span class="race-val-num" id="raceOilValue">--</span>
+                    <span class="race-val-unit" id="raceOilUnit">PSI</span>
                 </div>
-                <div class="crit-bar-v">
-                    <div class="crit-bar-fill warn-low" id="oilBar"></div>
+                <div class="race-val-cell" id="raceCltCard">
+                    <span class="race-val-label">CLT</span>
+                    <span class="race-val-num" id="raceCltValue">--</span>
+                    <span class="race-val-unit" id="raceCltUnit">°C</span>
                 </div>
-            </div>
-
-            <div class="crit-card" id="cltCard">
-                <div class="crit-label">COOLANT</div>
-                <div class="crit-value-row">
-                    <span class="crit-num" id="cltValue">--</span>
-                    <span class="crit-unit" id="cltUnit">°C</span>
+                <div class="race-val-cell" id="raceIatCard">
+                    <span class="race-val-label">IAT</span>
+                    <span class="race-val-num" id="raceIatValue">--</span>
+                    <span class="race-val-unit" id="raceIatUnit">°C</span>
                 </div>
-                <div class="crit-bar-v">
-                    <div class="crit-bar-fill temp-gradient" id="cltBar"></div>
-                </div>
-            </div>
-
-            <div class="crit-card" id="iatCard">
-                <div class="crit-label">INTAKE</div>
-                <div class="crit-value-row">
-                    <span class="crit-num" id="iatValue">--</span>
-                    <span class="crit-unit" id="iatUnit">°C</span>
-                </div>
-                <div class="crit-bar-v">
-                    <div class="crit-bar-fill iat-gradient" id="iatBar"></div>
+                <div class="race-val-cell" id="raceKnockCard">
+                    <span class="race-val-label">KNOCK</span>
+                    <span class="race-val-num" id="raceKnockValue">0°</span>
                 </div>
             </div>
 
-            <div class="crit-card" id="knockCard">
-                <div class="crit-label">KNOCK</div>
-                <div class="crit-knock-row">
-                    <div class="knock-item">
-                        <span class="knock-label">CNT</span>
-                        <span class="knock-value" id="knockCount">0</span>
-                    </div>
-                    <div class="knock-item">
-                        <span class="knock-label">RET</span>
-                        <span class="knock-value" id="knockRetard">0°</span>
-                    </div>
+            <!-- Bottom status -->
+            <div class="race-bottom-bar">
+                <div class="race-odo">
+                    <span class="race-odo-label">ODO</span>
+                    <span class="race-odo-val" id="raceOdoTotal">0.0</span>
+                    <span class="race-odo-unit" id="raceOdoDistUnit">km</span>
+                    <span class="race-odo-sep">|</span>
+                    <span class="race-odo-label">TRIP</span>
+                    <span class="race-odo-val" id="raceOdoTrip">0.0</span>
                 </div>
-                <div class="knock-bar">
-                    <div class="knock-fill" id="knockBar"></div>
-                </div>
-            </div>
-
-            <!-- HP Estimation -->
-            <div class="crit-card hp-card" id="hpCard">
-                <div class="crit-label">~HP</div>
-                <div class="crit-value-row">
-                    <span class="crit-num hp-num" id="hpValue">0</span>
-                    <span class="crit-unit">WHP</span>
-                </div>
-                <div class="hp-peak-row">
-                    <span class="hp-peak-label">PEAK</span>
-                    <span class="hp-peak-val" id="hpPeak">0</span>
-                    <button class="hp-reset" id="btnResetHP" title="Reset peak">↺</button>
-                </div>
-                <div class="crit-bar-v">
-                    <div class="crit-bar-fill hp-gradient" id="hpBar"></div>
+                <div class="race-status-dots">
+                    <span class="status-dot" id="raceStatusSync" title="ECU">●</span>
+                    <span class="status-dot" id="raceStatusGPS" title="GPS">●</span>
+                    <span class="status-knock" id="raceKnockIndicator" title="Knock">K</span>
+                    <a href="/settings.html" class="btn-settings" title="Settings">⚙</a>
                 </div>
             </div>
         </div>
 
-        <!-- Connection status -->
+        <!-- ============================================================
+             LAYOUT: MINIMAL — Ultra-clean, night driving mode
+             ============================================================ -->
+        <div id="layout-minimal" class="layout">
+            <div class="minimal-center">
+                <div class="minimal-speed-block">
+                    <span class="minimal-speed" id="minSpeedValue">0</span>
+                    <span class="minimal-speed-unit" id="minSpeedUnit">km/h</span>
+                </div>
+                <div class="minimal-divider"></div>
+                <div class="minimal-secondary">
+                    <div class="minimal-rpm-block">
+                        <span class="minimal-rpm" id="minRpmValue">0</span>
+                        <span class="minimal-rpm-label">RPM</span>
+                    </div>
+                    <div class="minimal-gear-block">
+                        <span class="minimal-gear" id="minGearDisplay">N</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Subtle status row -->
+            <div class="minimal-status">
+                <span class="minimal-status-item" id="minEngineStatus">OFF</span>
+                <span class="minimal-status-dot" id="minStatusSync" title="ECU">●</span>
+                <span class="minimal-status-dot" id="minStatusGPS" title="GPS">●</span>
+                <a href="/settings.html" class="minimal-settings-btn" title="Settings">⚙</a>
+            </div>
+        </div>
+
+        <!-- ============================================================
+             SHARED: Connection Banner + Warning Overlay
+             ============================================================ -->
         <div class="connection-banner" id="connectionBanner">
             <span class="conn-dot">●</span> DISCONNECTED — Reconnecting...
         </div>
 
-        <!-- Warning overlay -->
         <div class="warning-overlay" id="warningOverlay">
             <div class="warning-content">
                 <div class="warning-text" id="warningText"></div>

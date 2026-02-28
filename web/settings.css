@@ -270,6 +270,121 @@ body {
     color: var(--purple-light);
 }
 
+/* ---- Gear Instructions ---- */
+.gear-instructions-toggle {
+    display: block;
+    width: 100%;
+    background: rgba(34, 211, 238, 0.06);
+    border: 1px dashed rgba(34, 211, 238, 0.3);
+    border-radius: 8px;
+    color: var(--cyan);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 14px;
+    cursor: pointer;
+    text-align: left;
+    margin-bottom: 10px;
+    transition: all 0.2s;
+}
+
+.gear-instructions-toggle:hover {
+    background: rgba(34, 211, 238, 0.12);
+    border-color: var(--cyan);
+}
+
+.gear-instructions-toggle.open {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    margin-bottom: 0;
+    border-bottom: none;
+}
+
+.gear-instructions-body {
+    display: none;
+    background: rgba(34, 211, 238, 0.04);
+    border: 1px dashed rgba(34, 211, 238, 0.3);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    padding: 12px 16px 14px;
+    margin-bottom: 12px;
+}
+
+.gear-instructions-body.open {
+    display: block;
+}
+
+.gear-instructions-body ol {
+    padding-left: 20px;
+    margin: 0;
+}
+
+.gear-instructions-body li {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.7;
+    margin-bottom: 2px;
+}
+
+.gear-instructions-body li strong {
+    color: var(--text-primary);
+}
+
+.gear-tip {
+    font-size: 12px;
+    color: var(--amber);
+    margin-top: 10px;
+    line-height: 1.5;
+}
+
+/* ---- Auto-Fill Button ---- */
+.gear-autofill-btn {
+    display: block;
+    width: 100%;
+    background: rgba(251, 191, 36, 0.1);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+    border-radius: 8px;
+    color: var(--amber);
+    font-size: 13px;
+    font-weight: 700;
+    padding: 10px 14px;
+    cursor: pointer;
+    text-align: center;
+    margin-top: 10px;
+    letter-spacing: 0.5px;
+    transition: all 0.2s;
+}
+
+.gear-autofill-btn:hover {
+    background: rgba(251, 191, 36, 0.2);
+    border-color: var(--amber);
+    box-shadow: 0 2px 12px rgba(251, 191, 36, 0.15);
+}
+
+/* ---- Learn Button States ---- */
+.gear-learn-btn.sampling {
+    background: rgba(34, 211, 238, 0.2);
+    border-color: var(--cyan);
+    color: var(--cyan);
+    animation: pulse-sample 1s ease-in-out infinite;
+}
+
+@keyframes pulse-sample {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.gear-ratio-input.estimated {
+    border-color: rgba(251, 191, 36, 0.4);
+    color: var(--amber);
+}
+
 /* ---- Footer ---- */
 .settings-footer {
     position: fixed;

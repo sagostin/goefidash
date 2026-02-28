@@ -3,15 +3,28 @@
 ## Phase 1 — Core (✅ Complete)
 
 - [x] Speeduino ECU driver (TunerStudio `r` command, msEnvelope CRC32)
+- [x] Protocol auto-detection (msEnvelope → secondary serial fallback)
 - [x] NMEA GPS driver (10 Hz, u-blox compatible)
 - [x] WebSocket real-time dashboard
-- [x] Persistent odometer (haversine GPS distance)
+- [x] Persistent odometer (haversine GPS distance) with trip reset
 - [x] Unified speed source (VSS → GPS fallback)
 - [x] GPS-only mode (dashboard works without ECU)
 - [x] Exponential backoff serial retry
-- [x] `.env` + YAML + env var config system
-- [x] CSV data logger with file rotation
-- [x] Kiosk mode deployment (systemd + Chromium)
+- [x] `.env` + YAML + env var config system (layered priority)
+- [x] CSV data logger with configurable interval + file rotation
+- [x] Kiosk mode deployment (systemd + Chromium + Plymouth splash)
+- [x] Multiple dashboard layouts (Classic, Sweep, Race, Minimal)
+- [x] Gear detection (auto-learn from RPM/speed + manual ratio config)
+- [x] Estimated HP (road-load physics: mass, drag, frontal area, rolling resistance)
+- [x] Peak HP tracking with reset
+- [x] Configurable warning thresholds (RPM, CLT, IAT, AFR, oil pressure, battery, knock)
+- [x] Warning overlay system (fullscreen alerts for critical conditions)
+- [x] Web-based settings page (units, thresholds, drivetrain, vehicle physics)
+- [x] Drivetrain configuration (gear ratios, final drive, tire circumference, tolerance)
+- [x] Vehicle physics configuration (mass, drag coefficient, frontal area, rolling resistance)
+- [x] Unit conversions at runtime (°C/°F, kPa/PSI/bar, km/h/MPH, AFR/Lambda)
+- [x] CI/CD release pipeline (GitHub Actions → tagged tar.gz archive)
+- [x] Cross-compile targets (arm64 for Pi 4/5, armv7 for Pi 3B+)
 
 ---
 
@@ -40,42 +53,25 @@ TELEMETRY_OFFLINE_BUFFER=true
 
 ---
 
-## Phase 3 — Gear Detection & Drivetrain Calculations
+## Phase 3 — Advanced Calculated Channels
 
-Automatic gear detection and TunerStudio-style drivetrain calculations based on RPM/speed relationships.
+TunerStudio-style derived metrics built from existing ECU + GPS data.
 
-### Gear Detection
-- [ ] **Auto-learn gear ratios** — record RPM-to-speed ratios at steady state, cluster into gears
-- [ ] **Manual gear ratio config** — define ratios + final drive in config for known setups
-- [ ] **Live gear display** — calculated from `gear_ratio = (RPM × tire_circ) / (speed × final_drive × 1000)`
-- [ ] **Neutral / clutch detection** — RPM rising with no speed change = neutral/clutch in
-
-### Drivetrain Config
-```yaml
-drivetrain:
-  tire_diameter_mm: 635        # 245/40R18 = ~635mm
-  final_drive: 4.10
-  gear_ratios: [3.587, 2.022, 1.384, 1.000, 0.861, 0.717]  # 6-speed example
-  transmission: manual         # manual | automatic | sequential
-```
-
-### Calculated Channels (TunerStudio-style)
-- [ ] **Wheel speed** — `(RPM / gear_ratio / final_drive) × tire_circ × 60 / 1_000_000` → km/h
-- [ ] **Engine load %** — `(MAP / baro) × 100` or VE-based
-- [ ] **Injector duty cycle** — `(PW × RPM) / (60_000 / cylinders × 2)` for 4-stroke
+### Fuel & Efficiency
 - [ ] **Fuel consumption** — `(PW × RPM × injector_cc × num_inj) / (2 × 60 × 1000 × fuel_density)` → L/hr
 - [ ] **Fuel economy** — `speed / fuel_consumption` → km/L or MPG
-- [ ] **Estimated HP** — `(MAP × RPM × displacement) / (2 × 60 × baro × VE_correction)` (rough)
-- [ ] **Estimated torque** — `HP × 5252 / RPM`
+- [ ] **Fuel economy gauge** — instantaneous + average + trip economy display
+
+### Engine
+- [ ] **Engine load %** — `(MAP / baro) × 100` or VE-based
 - [ ] **Boost (relative)** — `MAP - baro` → psi/kPa above atmospheric
-- [ ] **Lambda from AFR** — `AFR / stoich` (already available, display option)
+- [ ] **Lambda from AFR** — `AFR / stoich` display option (already calculated, needs UI)
 - [ ] **MAF estimate** — `(MAP × displacement × VE × RPM) / (2 × R × IAT_kelvin)` (ideal gas)
 - [ ] **Knock retard tracking** — delta between target and actual advance
 
-### Display
-- [ ] **Calculated channels panel** — show derived values in a dedicated section
-- [ ] **Fuel economy gauge** — instantaneous + average + trip economy
+### Performance
 - [ ] **0-60 / 0-100 timer** — GPS-based acceleration timing
+- [ ] **Calculated channels panel** — show derived values in a dedicated dashboard section
 
 ---
 

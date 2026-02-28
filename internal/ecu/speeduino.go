@@ -45,14 +45,15 @@ const (
 //
 // Protocol reference: docs/SPEEDUINO_SECONDARY_SERIAL_PROTOCOL.md
 type Speeduino struct {
-	portPath string
-	baudRate int
-	canID    byte
-	port     serial.Port
-	mu       sync.Mutex
-	stoich   float64      // Stoichiometric ratio for lambda calc
-	proto    protocolMode // Detected protocol
-	protocol string       // Configured protocol preference (auto/secondary/msenvelope)
+	portPath  string
+	baudRate  int
+	canID     byte
+	port      serial.Port
+	mu        sync.Mutex
+	stoich    float64      // Stoichiometric ratio for lambda calc
+	proto     protocolMode // Detected protocol
+	protocol  string       // Configured protocol preference (auto/secondary/msenvelope)
+	connected bool         // True only after Connect() successfully handshakes
 }
 
 // SpeeduinoConfig holds connection configuration for the Speeduino provider.
@@ -164,6 +165,7 @@ func (s *Speeduino) Connect() error {
 		log.Printf("[speeduino] trying msEnvelope 'Q' command on %s...", s.portPath)
 		if err := s.tryMsEnvelopeQ(); err == nil {
 			s.proto = protoPrimary
+			s.connected = true
 			log.Printf("[speeduino] connected to %s at %d baud (msEnvelope protocol via Q)", s.portPath, s.baudRate)
 			return nil
 		} else {
@@ -177,6 +179,7 @@ func (s *Speeduino) Connect() error {
 		log.Printf("[speeduino] trying msEnvelope 'r' command on %s...", s.portPath)
 		if err := s.tryPrimaryHandshake(); err == nil {
 			s.proto = protoPrimary
+			s.connected = true
 			log.Printf("[speeduino] connected to %s at %d baud (msEnvelope protocol)", s.portPath, s.baudRate)
 			return nil
 		} else {
@@ -209,6 +212,7 @@ func (s *Speeduino) Connect() error {
 		log.Printf("[speeduino] trying secondary serial 'n' command on %s...", s.portPath)
 		if err := s.trySecondaryHandshakeN(); err == nil {
 			s.proto = protoSecondaryN
+			s.connected = true
 			log.Printf("[speeduino] connected to %s at %d baud (secondary serial 'n' protocol)", s.portPath, s.baudRate)
 			return nil
 		} else {
@@ -222,6 +226,7 @@ func (s *Speeduino) Connect() error {
 		log.Printf("[speeduino] trying secondary serial 'A' command on %s...", s.portPath)
 		if err := s.trySecondaryHandshakeA(); err == nil {
 			s.proto = protoSecondaryA
+			s.connected = true
 			log.Printf("[speeduino] connected to %s at %d baud (secondary serial 'A' protocol)", s.portPath, s.baudRate)
 			return nil
 		} else {
@@ -444,6 +449,8 @@ func (s *Speeduino) tryPrimaryHandshake() error {
 		return fmt.Errorf("write failed: %w", err)
 	}
 
+	time.Sleep(postWriteDelay)
+
 	payload, err := s.readMsEnvelopeResponse()
 	if err != nil {
 		return err
@@ -644,8 +651,13 @@ func (s *Speeduino) readExact(buf []byte, timeout time.Duration) error {
 }
 
 func (s *Speeduino) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.connected = false
 	if s.port != nil {
-		return s.port.Close()
+		err := s.port.Close()
+		s.port = nil
+		return err
 	}
 	return nil
 }
@@ -655,7 +667,7 @@ func (s *Speeduino) RequestData() (*DataFrame, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.port == nil {
+	if !s.connected || s.port == nil {
 		return nil, fmt.Errorf("speeduino: not connected")
 	}
 
@@ -801,6 +813,8 @@ func (s *Speeduino) requestPrimary() (*DataFrame, error) {
 	if _, err := s.port.Write(envelope); err != nil {
 		return nil, fmt.Errorf("speeduino: write failed: %w", err)
 	}
+
+	time.Sleep(postWriteDelay)
 
 	// Response is msEnvelope-framed: <size_hi><size_lo><payload><crc32>
 	payload, err := s.readMsEnvelopeResponse()

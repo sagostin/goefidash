@@ -39,9 +39,9 @@
                     <label>Dashboard Style</label>
                     <select id="cfgLayout">
                         <option value="classic">Classic</option>
-                        <option value="sweep" disabled>Sweep (coming soon)</option>
-                        <option value="race" disabled>Race (coming soon)</option>
-                        <option value="minimal" disabled>Minimal (coming soon)</option>
+                        <option value="sweep">Sweep</option>
+                        <option value="race">Race</option>
+                        <option value="minimal">Minimal</option>
                     </select>
                 </div>
             </div>
@@ -138,9 +138,33 @@
                     <input type="number" id="cfgGearTolerance" value="15" min="5" max="30">
                 </div>
                 <div class="gear-section">
-                    <div class="gear-header">Gear Ratios <span class="gear-hint">Drive steadily and press Learn</span>
+                    <div class="gear-header">Gear Ratios</div>
+
+                    <!-- Collapsible Instructions -->
+                    <button class="gear-instructions-toggle" id="gearInstructionsToggle">
+                        📖 How to Learn Gear Ratios
+                    </button>
+                    <div class="gear-instructions-body" id="gearInstructionsBody">
+                        <ol>
+                            <li>Set your <strong>Final Drive</strong> and <strong>Tire Circumference</strong> above
+                                first</li>
+                            <li>Drive in the gear you want to learn</li>
+                            <li>Hold <strong>steady speed at 2,000–3,000 RPM</strong> — no acceleration or braking</li>
+                            <li>Press <strong>Learn</strong> — the system samples 10 frames and averages the ratio</li>
+                            <li>Repeat for each gear, or learn one and press <strong>Auto-Fill</strong> to estimate the
+                                rest</li>
+                        </ol>
+                        <p class="gear-tip">💡 3rd or 4th gear is easiest to hold steady. Learn one gear and Auto-Fill
+                            will extrapolate the others using a geometric progression.</p>
                     </div>
+
                     <div id="gearRatioList"></div>
+
+                    <!-- Auto-Fill from known gear -->
+                    <button class="gear-autofill-btn" id="btnAutoFill"
+                        title="Estimate empty gears from any learned gear">
+                        ⚡ Auto-Fill Remaining Gears
+                    </button>
                 </div>
             </div>
 

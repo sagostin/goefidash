@@ -100,6 +100,10 @@
         });
     }
 
+    // ---- Multi-sample Gear Learning ----
+    const SAMPLE_COUNT = 10;
+    const SAMPLE_INTERVAL = 200; // ms between samples (10 samples × 200ms = 2s)
+
     function learnGear(idx, btnEl) {
         const frame = D.lastFrame;
         if (!frame || !frame.ecu) {
@@ -113,18 +117,113 @@
             setTimeout(() => { btnEl.textContent = 'Learn'; }, 1500);
             return;
         }
-        const overallRatio = D.calcOverallRatio(frame.ecu.rpm, speedKph);
-        if (overallRatio <= 0) {
-            btnEl.textContent = 'Error';
-            setTimeout(() => { btnEl.textContent = 'Learn'; }, 1500);
-            return;
-        }
+
+        // Start multi-sample collection
+        const samples = [];
+        btnEl.classList.add('sampling');
+        btnEl.disabled = true;
+        btnEl.textContent = '0/' + SAMPLE_COUNT;
+
+        const sampleTimer = setInterval(() => {
+            const f = D.lastFrame;
+            if (!f || !f.ecu) return; // skip bad frame
+            const spd = f.speed ? f.speed.value : 0;
+            const ratio = D.calcOverallRatio(f.ecu.rpm, spd);
+            if (ratio > 0) {
+                samples.push(ratio);
+                btnEl.textContent = samples.length + '/' + SAMPLE_COUNT;
+            }
+
+            if (samples.length >= SAMPLE_COUNT) {
+                clearInterval(sampleTimer);
+                finishLearn(idx, btnEl, samples);
+            }
+        }, SAMPLE_INTERVAL);
+
+        // Timeout safety — if we can't get 10 good samples in 5s, use what we have
+        setTimeout(() => {
+            clearInterval(sampleTimer);
+            if (samples.length >= 3) {
+                finishLearn(idx, btnEl, samples);
+            } else {
+                btnEl.classList.remove('sampling');
+                btnEl.disabled = false;
+                btnEl.textContent = 'Hold steady';
+                setTimeout(() => { btnEl.textContent = 'Learn'; }, 1500);
+            }
+        }, 5000);
+    }
+
+    function finishLearn(idx, btnEl, samples) {
+        // Average the samples
+        const avgRatio = samples.reduce((s, v) => s + v, 0) / samples.length;
         const finalDrive = parseFloat($('cfgFinalDrive').value) || 3.73;
-        const gearRatio = overallRatio / finalDrive;
-        $('gearRatio' + idx).value = gearRatio.toFixed(3);
+        const gearRatio = avgRatio / finalDrive;
+
+        const input = $('gearRatio' + idx);
+        input.value = gearRatio.toFixed(3);
+        input.classList.remove('estimated');
+        btnEl.classList.remove('sampling');
+        btnEl.disabled = false;
         btnEl.textContent = '✓ ' + gearRatio.toFixed(3);
         btnEl.style.color = '#4ade80';
-        setTimeout(() => { btnEl.textContent = 'Learn'; btnEl.style.color = ''; }, 2000);
+        setTimeout(() => { btnEl.textContent = 'Learn'; btnEl.style.color = ''; }, 2500);
+    }
+
+    // ---- Auto-Fill Extrapolation ----
+    // Uses geometric progression: each higher gear ≈ previous × step_ratio
+    // Typical step_ratio for manual transmissions is ~0.70–0.78 between gears
+    function autoFillGears() {
+        const maxGears = 6;
+        // Find any learned (non-empty) gear
+        let knownIdx = -1, knownRatio = 0;
+        for (let i = 0; i < maxGears; i++) {
+            const el = $('gearRatio' + i);
+            if (!el) break;
+            const v = parseFloat(el.value);
+            if (v > 0 && !el.classList.contains('estimated')) {
+                knownIdx = i;
+                knownRatio = v;
+                break;
+            }
+        }
+
+        // Fall back to any value including estimates
+        if (knownIdx < 0) {
+            for (let i = 0; i < maxGears; i++) {
+                const el = $('gearRatio' + i);
+                if (!el) break;
+                const v = parseFloat(el.value);
+                if (v > 0) { knownIdx = i; knownRatio = v; break; }
+            }
+        }
+
+        if (knownIdx < 0) {
+            const btn = $('btnAutoFill');
+            btn.textContent = 'Learn at least one gear first';
+            setTimeout(() => { btn.textContent = '⚡ Auto-Fill Remaining Gears'; }, 2000);
+            return;
+        }
+
+        // Typical geometric step ratio (each gear up ≈ 0.74× the previous)
+        const stepRatio = 0.74;
+
+        for (let i = 0; i < maxGears; i++) {
+            const el = $('gearRatio' + i);
+            if (!el) break;
+            const existing = parseFloat(el.value);
+            if (existing > 0) continue; // don't overwrite learned gears
+
+            // Steps from known gear: negative = lower gear (multiply), positive = higher gear (divide)
+            const stepsFromKnown = i - knownIdx;
+            const estimated = knownRatio * Math.pow(stepRatio, stepsFromKnown);
+            el.value = '~' + estimated.toFixed(3);
+            el.classList.add('estimated');
+        }
+
+        const btn = $('btnAutoFill');
+        btn.textContent = '✓ Filled — verify and re-learn as needed';
+        setTimeout(() => { btn.textContent = '⚡ Auto-Fill Remaining Gears'; }, 3000);
     }
 
     // ---- Collect Gear Ratios ----
@@ -133,7 +232,9 @@
         for (let i = 0; i < 8; i++) {
             const el = $('gearRatio' + i);
             if (!el) break;
-            const v = parseFloat(el.value);
+            // Strip leading ~ from estimated values
+            const raw = el.value.toString().replace(/^~/, '');
+            const v = parseFloat(raw);
             if (v > 0) ratios.push(v);
             else break;
         }
@@ -214,6 +315,13 @@
     // ---- Event Listeners ----
     $('btnSave').addEventListener('click', saveConfig);
     $('btnSaveBottom').addEventListener('click', saveConfig);
+    $('btnAutoFill').addEventListener('click', autoFillGears);
+
+    // Instructions toggle
+    $('gearInstructionsToggle').addEventListener('click', function () {
+        this.classList.toggle('open');
+        $('gearInstructionsBody').classList.toggle('open');
+    });
 
     // ---- Init ----
     window.addEventListener('load', () => {

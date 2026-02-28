@@ -2,6 +2,8 @@
 
 Complete guide to setting up Speeduino Dash on a Raspberry Pi — from bare SD card to running dashboard.
 
+> 📖 See the main [README](../README.md) for features, configuration reference, and architecture overview.
+
 ---
 
 ## Recommended Hardware

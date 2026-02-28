@@ -1,6 +1,6 @@
 # TunerStudio msEnvelope Serial Protocol
 
-> Source: [EFI Analytics ECU Definition Files](docs/EFI_Analytics_ECU_Definition_files.pdf) + Speeduino `speeduino.ini`
+> Source: [EFI Analytics ECU Definition Files](EFI_Analytics_ECU_Definition_files.pdf) + Speeduino `speeduino.ini`
 
 ## Overview
 

@@ -308,6 +308,7 @@ func (s *Server) pollLoop(ctx context.Context) {
 
 	// ECU polling goroutine — runs independently
 	go func() {
+		var lastECUErr time.Time
 		for {
 			select {
 			case <-ctx.Done():
@@ -318,6 +319,9 @@ func (s *Server) pollLoop(ctx context.Context) {
 						ecuMu.Lock()
 						lastECU = data
 						ecuMu.Unlock()
+					} else if time.Since(lastECUErr) > 5*time.Second {
+						log.Printf("[ecu] poll error: %v", err)
+						lastECUErr = time.Now()
 					}
 				}
 			}
