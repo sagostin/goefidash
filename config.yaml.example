@@ -13,6 +13,7 @@ ecu:
   can_id: 0
   stoich: 14.7             # Stoichiometric ratio (14.7 gasoline, 9.8 E85)
   poll_hz: 20              # Polling rate in Hz
+  protocol: auto           # "auto", "msenvelope" (TunerStudio mode), or "secondary" (Generic mode)
 
 # ---- GPS ----
 gps:

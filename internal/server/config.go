@@ -45,7 +45,8 @@ type ECUConfig struct {
 	BaudRate int     `yaml:"baud_rate" json:"baudRate"`
 	CanID    int     `yaml:"can_id" json:"canId"`
 	Stoich   float64 `yaml:"stoich" json:"stoich"`
-	PollHz   int     `yaml:"poll_hz" json:"pollHz"` // ECU polling rate
+	PollHz   int     `yaml:"poll_hz" json:"pollHz"`    // ECU polling rate
+	Protocol string  `yaml:"protocol" json:"protocol"` // "auto", "secondary", "msenvelope" (default: auto)
 }
 
 type GPSConfig struct {
@@ -278,6 +279,9 @@ func (c *Config) applyEnvOverrides() {
 	}
 	if v := os.Getenv("SPEED_UNIT"); v != "" {
 		c.Display.Units.Speed = v
+	}
+	if v := os.Getenv("ECU_PROTOCOL"); v != "" {
+		c.ECU.Protocol = v
 	}
 	// Logging
 	if v := os.Getenv("LOG_ENABLED"); v != "" {

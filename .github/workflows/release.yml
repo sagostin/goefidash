@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+
+      - name: Get tag name
+        id: tag
+        run: echo "TAG=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Build for RPi 3B+ (linux/arm, GOARM=7)
+        env:
+          GOOS: linux
+          GOARCH: arm
+          GOARM: "7"
+          CGO_ENABLED: "0"
+        run: |
+          go build \
+            -ldflags "-s -w -X main.version=${{ steps.tag.outputs.TAG }}" \
+            -o speeduino-dash \
+            ./cmd/speeduino-dash/
+
+      - name: Package release archive
+        run: |
+          ARCHIVE="speeduino-dash-${{ steps.tag.outputs.TAG }}-linux-arm.tar.gz"
+          tar czf "$ARCHIVE" \
+            speeduino-dash \
+            config.yaml.example \
+            deploy/
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: ${{ env.ARCHIVE }}
