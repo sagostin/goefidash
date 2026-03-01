@@ -3,8 +3,9 @@
 #   make              # Build for current platform
 #   make pi           # Cross-compile for Raspberry Pi (arm64)
 #   make run          # Build and run in demo mode
+#   make deploy PI=pi@192.168.1.50  # Remote deploy to Pi
 #   make install      # Install on the Pi (requires sudo)
-#   make rpi-setup    # Interactive RPi first-time setup
+#   make rpi-setup    # Interactive RPi first-time setup (on-Pi)
 #   make clean        # Remove built binary
 
 BINARY  := speeduino-dash
@@ -12,7 +13,7 @@ CMD     := ./cmd/speeduino-dash/
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: all build pi run install kiosk rpi-setup clean
+.PHONY: all build pi run deploy install kiosk rpi-setup clean
 
 # Default: build for current platform
 all: build
@@ -40,7 +41,13 @@ install:
 kiosk:
 	sudo bash deploy/setup-kiosk.sh
 
-# Interactive Raspberry Pi setup (prompts for devices, units, kiosk, etc.)
+# Remote deploy: build + copy + run setup on Pi via SSH
+# Usage: make deploy PI=pi@192.168.1.50
+deploy:
+	@test -n "$(PI)" || (echo "Usage: make deploy PI=user@host" && exit 1)
+	bash deploy-pi.sh $(PI)
+
+# Interactive Raspberry Pi setup (run directly on the Pi)
 rpi-setup:
 	sudo bash deploy/rpi-setup.sh
 

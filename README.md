@@ -90,27 +90,25 @@ make run          # or: ./speeduino-dash --demo --listen :8080
 | `--listen :8080` | Set the HTTP listen address |
 | `--config /path/to/config.yaml` | Load config from a specific path |
 
-### On Raspberry Pi
+### Deploy to Raspberry Pi
 
 ```bash
-# Cross-compile for Pi 3B+ (32-bit, ARMv7)
-make pi32
-
-# Interactive setup — prompts for ECU serial, GPS, units, kiosk, etc.
-make rpi-setup        # or: sudo bash deploy/rpi-setup.sh
+# One command: builds locally, copies to Pi, runs interactive setup via SSH
+./deploy-pi.sh pi@192.168.1.50
+# or:
+make deploy PI=pi@192.168.1.50
 ```
 
-The interactive setup walks you through:
+This builds the binary for ARMv7, SCPs it along with all deploy scripts to the Pi, then drops you into an interactive SSH session that walks you through:
 - **ECU connection** — Pi UART (`/dev/ttyAMA0`), USB serial (auto-detect), or custom path
 - **GPS module** — USB GPS with auto-generated udev rules, or disabled
 - **Display units** — temperature, speed, pressure, layout
 - **Kiosk mode** — optional Plymouth splash + auto-login + Chromium fullscreen
 
-Alternatively, for a non-interactive install:
+If you're already on the Pi, run the setup directly:
 
 ```bash
-sudo bash deploy/install.sh          # Install binary, config, service
-sudo bash deploy/setup-kiosk.sh      # Add kiosk mode
+sudo bash deploy/rpi-setup.sh
 ```
 
 > 📖 See [**Raspberry Pi Setup Guide**](docs/RASPBERRY_PI_SETUP.md) for the complete walkthrough — from bare SD card to running dashboard.
@@ -186,8 +184,9 @@ web/
     settings.html           Web-based configuration page
     settings.js             Settings logic, gear auto-learn, live preview
     settings.css            Settings page styles
+deploy-pi.sh                Remote deploy (build → scp → SSH setup)
 deploy/
-    rpi-setup.sh            Interactive Raspberry Pi setup (recommended)
+    rpi-setup.sh            Interactive Raspberry Pi setup (runs on Pi)
     install.sh              Non-interactive Raspberry Pi installer
     setup-kiosk.sh          Boot splash + auto-login + Chromium service
     speeduino-dash.service  systemd unit file
