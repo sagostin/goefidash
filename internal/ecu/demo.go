@@ -24,6 +24,17 @@ func (d *DemoProvider) Connect() error    { d.running = true; return nil }
 func (d *DemoProvider) Close() error      { d.running = false; return nil }
 func (d *DemoProvider) IsConnected() bool { return d.running }
 
+// RequestRawData for Demo returns a dummy RawData — no real serial I/O.
+func (d *DemoProvider) RequestRawData() (*RawData, error) {
+	return &RawData{Tag: "demo"}, nil
+}
+
+// ParseRawData for Demo ignores the raw data and generates simulated values.
+func (d *DemoProvider) ParseRawData(raw *RawData) *DataFrame {
+	f, _ := d.RequestData()
+	return f
+}
+
 func (d *DemoProvider) RequestData() (*DataFrame, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()

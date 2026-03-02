@@ -271,19 +271,26 @@ func (s *Server) pollLoop(ctx context.Context) {
 	if ecuHz <= 0 {
 		ecuHz = 20
 	}
-	ecuTicker := time.NewTicker(time.Second / time.Duration(ecuHz))
+
 	gpsTicker := time.NewTicker(100 * time.Millisecond)                   // 10 Hz
 	broadcastTicker := time.NewTicker(time.Second / time.Duration(ecuHz)) // Match ECU rate
-	defer ecuTicker.Stop()
 	defer gpsTicker.Stop()
 	defer broadcastTicker.Stop()
 
 	var (
-		lastECU *ecu.DataFrame
+		lastECU *ecu.DataFrame // latest frame, updated from channel
 		lastGPS *gps.Data
-		ecuMu   sync.Mutex
 		gpsMu   sync.Mutex
 	)
+
+	// 3-stage async pipeline:
+	//   Serial goroutine → rawCh (*RawData) → Parser goroutine → ecuCh (*DataFrame) → Broadcast
+	//
+	// The serial goroutine only does wire I/O (send command → read bytes).
+	// Parsing happens async in a separate goroutine so the serial thread
+	// can immediately loop back for the next poll cycle.
+	rawCh := make(chan *ecu.RawData, 2)   // serial → parser
+	ecuCh := make(chan *ecu.DataFrame, 2) // parser → broadcast
 
 	// GPS polling goroutine — runs independently
 	go func() {
@@ -307,64 +314,105 @@ func (s *Server) pollLoop(ctx context.Context) {
 		}
 	}()
 
-	// ECU polling goroutine — runs independently with reconnection
+	// Stage 1: Serial I/O goroutine — owns the serial port exclusively.
+	// Does ONLY wire I/O: send poll command → read raw bytes → push to rawCh.
+	// No parsing, no CPU work — gets back to the serial port ASAP.
 	go func() {
 		var (
-			lastECUErr     time.Time
+			lastErrLog     time.Time
 			consecErrors   int
 			reconnectDelay = 2 * time.Second
 			maxReconnDelay = 30 * time.Second
+			pollInterval   = time.Second / time.Duration(ecuHz)
 		)
-		const maxConsecErrors = 10 // reconnect after this many sequential failures
+		const maxConsecErrors = 10
 
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-ecuTicker.C:
-				if s.ecuProv == nil {
-					continue
-				}
+			default:
+			}
 
-				// Check if we need to reconnect
-				if !s.ecuProv.IsConnected() {
-					if time.Since(lastECUErr) > reconnectDelay {
-						log.Printf("[ecu] attempting reconnection...")
-						if err := s.ecuProv.Connect(); err != nil {
-							log.Printf("[ecu] reconnect failed: %v (retry in %v)", err, reconnectDelay)
-							lastECUErr = time.Now()
-							reconnectDelay *= 2
-							if reconnectDelay > maxReconnDelay {
-								reconnectDelay = maxReconnDelay
-							}
-						} else {
-							log.Printf("[ecu] reconnected successfully")
-							consecErrors = 0
-							reconnectDelay = 2 * time.Second
+			if s.ecuProv == nil {
+				time.Sleep(pollInterval)
+				continue
+			}
+
+			// Reconnection — blocks here until connected
+			if !s.ecuProv.IsConnected() {
+				if time.Since(lastErrLog) > reconnectDelay {
+					log.Printf("[ecu] attempting reconnection...")
+					if err := s.ecuProv.Connect(); err != nil {
+						log.Printf("[ecu] reconnect failed: %v (retry in %v)", err, reconnectDelay)
+						lastErrLog = time.Now()
+						reconnectDelay *= 2
+						if reconnectDelay > maxReconnDelay {
+							reconnectDelay = maxReconnDelay
 						}
-					}
-					continue
-				}
-
-				data, err := s.ecuProv.RequestData()
-				if err == nil {
-					ecuMu.Lock()
-					lastECU = data
-					ecuMu.Unlock()
-					consecErrors = 0
-				} else {
-					consecErrors++
-					if time.Since(lastECUErr) > 5*time.Second {
-						log.Printf("[ecu] poll error (%d consecutive): %v", consecErrors, err)
-						lastECUErr = time.Now()
-					}
-					// After too many consecutive errors, trigger reconnection
-					if consecErrors >= maxConsecErrors {
-						log.Printf("[ecu] %d consecutive errors, closing connection for reconnect", consecErrors)
-						s.ecuProv.Close()
+					} else {
+						log.Printf("[ecu] reconnected successfully")
 						consecErrors = 0
 						reconnectDelay = 2 * time.Second
 					}
+				}
+				time.Sleep(pollInterval)
+				continue
+			}
+
+			// Serial I/O only — send command, read raw bytes
+			raw, err := s.ecuProv.RequestRawData()
+			if err == nil {
+				consecErrors = 0
+				// Non-blocking send to parser
+				select {
+				case rawCh <- raw:
+				default:
+					select {
+					case <-rawCh:
+					default:
+					}
+					rawCh <- raw
+				}
+			} else {
+				consecErrors++
+				if time.Since(lastErrLog) > 5*time.Second {
+					log.Printf("[ecu] poll error (%d consecutive): %v", consecErrors, err)
+					lastErrLog = time.Now()
+				}
+				if consecErrors >= maxConsecErrors {
+					log.Printf("[ecu] %d consecutive errors, closing for reconnect", consecErrors)
+					s.ecuProv.Close()
+					consecErrors = 0
+					reconnectDelay = 2 * time.Second
+				}
+			}
+
+			time.Sleep(pollInterval)
+		}
+	}()
+
+	// Stage 2: Parser goroutine — CPU-only, no I/O.
+	// Reads raw bytes from rawCh, parses into DataFrames, pushes to ecuCh.
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case raw := <-rawCh:
+				if s.ecuProv == nil {
+					continue
+				}
+				frame := s.ecuProv.ParseRawData(raw)
+				// Non-blocking send to broadcast
+				select {
+				case ecuCh <- frame:
+				default:
+					select {
+					case <-ecuCh:
+					default:
+					}
+					ecuCh <- frame
 				}
 			}
 		}
@@ -377,9 +425,19 @@ func (s *Server) pollLoop(ctx context.Context) {
 			s.logger.Close()
 			return
 		case <-broadcastTicker.C:
-			ecuMu.Lock()
+			// Drain the ECU channel for the latest frame (non-blocking).
+			// This ensures we always use the most recent data even if
+			// multiple frames arrived between broadcast ticks.
+			for {
+				select {
+				case frame := <-ecuCh:
+					lastECU = frame
+				default:
+					goto DRAINED
+				}
+			}
+		DRAINED:
 			ecuSnap := lastECU
-			ecuMu.Unlock()
 
 			gpsMu.Lock()
 			gpsSnap := lastGPS

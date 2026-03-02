@@ -295,8 +295,10 @@ func (s *Speeduino) Close() error {
 	return nil
 }
 
-// RequestData sends a read-only data request and parses the response.
-func (s *Speeduino) RequestData() (*DataFrame, error) {
+// RequestRawData performs serial I/O only: sends the poll command and reads
+// the raw response bytes. No parsing is done. This keeps the serial goroutine
+// as tight as possible — it's back ready for the next cycle immediately.
+func (s *Speeduino) RequestRawData() (*RawData, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -306,28 +308,46 @@ func (s *Speeduino) RequestData() (*DataFrame, error) {
 
 	switch s.proto {
 	case protoGeneric:
-		return s.requestGeneric()
+		if s.useNCmd {
+			return s.rawGenericN()
+		}
+		return s.rawGenericA()
 	case protoTunerStudio:
-		return s.requestTunerStudio()
+		return s.rawTunerStudio()
 	default:
 		return nil, fmt.Errorf("speeduino: unknown protocol mode")
 	}
+}
+
+// ParseRawData parses raw bytes into a DataFrame.
+// This is CPU-only (no I/O) and safe to call from any goroutine.
+func (s *Speeduino) ParseRawData(raw *RawData) *DataFrame {
+	switch raw.Tag {
+	case "generic-n", "generic-a":
+		return s.parseSecondaryData(raw.Data)
+	case "tunerstudio":
+		return s.parsePrimaryData(raw.Data)
+	default:
+		return &DataFrame{}
+	}
+}
+
+// RequestData is a convenience that calls RequestRawData + ParseRawData.
+func (s *Speeduino) RequestData() (*DataFrame, error) {
+	raw, err := s.RequestRawData()
+	if err != nil {
+		return nil, err
+	}
+	return s.ParseRawData(raw), nil
 }
 
 // ============================================================================
 // Generic Protocol — plain commands, no envelope
 // ============================================================================
 
-// requestGeneric sends the 'n' or 'A' command and parses the data.
-func (s *Speeduino) requestGeneric() (*DataFrame, error) {
-	if s.useNCmd {
-		return s.requestGenericN()
-	}
-	return s.requestGenericA()
-}
-
-// requestGenericN sends the 'n' command and parses the enhanced data set.
-func (s *Speeduino) requestGenericN() (*DataFrame, error) {
+// rawGenericN sends the 'n' command and reads the raw enhanced data set.
+// Serial I/O only — no parsing.
+func (s *Speeduino) rawGenericN() (*RawData, error) {
 	s.port.ResetInputBuffer()
 
 	if _, err := s.port.Write([]byte{'n'}); err != nil {
@@ -360,11 +380,12 @@ func (s *Speeduino) requestGenericN() (*DataFrame, error) {
 		return nil, fmt.Errorf("speeduino: n-cmd data: %w", err)
 	}
 
-	return s.parseSecondaryData(data), nil
+	return &RawData{Tag: "generic-n", Data: data}, nil
 }
 
-// requestGenericA sends the legacy 'A' command and parses the simple data set.
-func (s *Speeduino) requestGenericA() (*DataFrame, error) {
+// rawGenericA sends the legacy 'A' command and reads the raw simple data set.
+// Serial I/O only — no parsing.
+func (s *Speeduino) rawGenericA() (*RawData, error) {
 	s.port.ResetInputBuffer()
 
 	if _, err := s.port.Write([]byte{'A'}); err != nil {
@@ -384,16 +405,16 @@ func (s *Speeduino) requestGenericA() (*DataFrame, error) {
 		return nil, fmt.Errorf("speeduino: A-cmd unexpected echo: got 0x%02X, want 0x41", resp[0])
 	}
 
-	data := resp[1:]
-	return s.parseSecondaryData(data), nil
+	return &RawData{Tag: "generic-a", Data: resp[1:]}, nil
 }
 
 // ============================================================================
 // TunerStudio Protocol — msEnvelope CRC32 framed
 // ============================================================================
 
-// requestTunerStudio sends an msEnvelope-framed 'r' command and reads the enveloped response.
-func (s *Speeduino) requestTunerStudio() (*DataFrame, error) {
+// rawTunerStudio sends an msEnvelope-framed 'r' command and reads the raw OCH data.
+// Serial I/O only — no parsing.
+func (s *Speeduino) rawTunerStudio() (*RawData, error) {
 	s.port.ResetInputBuffer()
 
 	envelope := s.buildMsEnvelopeR(0, ochBlockSize)
@@ -425,7 +446,7 @@ func (s *Speeduino) requestTunerStudio() (*DataFrame, error) {
 		return nil, fmt.Errorf("speeduino: unexpected payload size: %d (want %d)", len(payload), ochBlockSize)
 	}
 
-	return s.parsePrimaryData(data), nil
+	return &RawData{Tag: "tunerstudio", Data: data}, nil
 }
 
 // ============================================================================

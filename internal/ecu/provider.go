@@ -12,8 +12,25 @@ type Provider interface {
 	Close() error
 	// IsConnected returns whether the provider has an active connection.
 	IsConnected() bool
-	// RequestData sends a data request and returns parsed realtime values.
+
+	// RequestRawData performs serial I/O only: sends the poll command
+	// and reads the raw response bytes. No parsing is done.
+	// This should be called from the dedicated serial goroutine.
+	RequestRawData() (*RawData, error)
+
+	// ParseRawData parses raw bytes into a DataFrame.
+	// This is CPU-only (no I/O) and safe to call from any goroutine.
+	ParseRawData(raw *RawData) *DataFrame
+
+	// RequestData is a convenience that calls RequestRawData + ParseRawData.
+	// Prefer the split methods for async pipelines.
 	RequestData() (*DataFrame, error)
+}
+
+// RawData carries the raw serial response for deferred async parsing.
+type RawData struct {
+	Tag  string // Protocol tag for the parser (e.g. "generic-n", "generic-a", "tunerstudio")
+	Data []byte // Raw response bytes (after framing/header stripped)
 }
 
 // DataFrame holds all parsed realtime engine data channels.
