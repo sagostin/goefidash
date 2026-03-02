@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
-	"io"
 	"log"
 	"sync"
 	"time"
@@ -16,44 +15,53 @@ import (
 type protocolMode int
 
 const (
-	// protoSecondaryN is the plain Secondary Serial IO protocol using the 'n' command.
-	protoSecondaryN protocolMode = iota
-	// protoSecondaryA is the plain Secondary Serial IO protocol using the legacy 'A' command.
-	protoSecondaryA
-	// protoSecondaryR is the plain Secondary Serial IO protocol using the 'r' command.
-	protoSecondaryR
-	// protoPrimary is the msEnvelope CRC32-framed protocol (primary/USB port
-	// or secondary port with secondarySerialProtocol="Tuner Studio").
-	protoPrimary
+	// protoGeneric is the plain Secondary Serial IO protocol.
+	// Uses the 'n' command (119-byte enhanced data set) for polling,
+	// with 'A' (75-byte legacy) as a connect-time fallback.
+	// For secondarySerialProtocol = Generic (Fixed List) or Generic (ini File).
+	protoGeneric protocolMode = iota
+	// protoTunerStudio is the msEnvelope CRC32-framed protocol.
+	// Uses the framed 'r' command to fetch the full 130-byte OCH block.
+	// For secondarySerialProtocol = Tuner Studio, or the primary/USB port.
+	protoTunerStudio
+)
+
+const (
+	// TunerStudio / primary OCH block constants (from INI)
+	ochBlockSize = 130
+	rCommandType = 0x30
+
+	// Generic / secondary data sizes
+	genericNDataSize = 119 // Bytes returned by 'n' command (firmware 202409+)
+	genericADataSize = 75  // Bytes returned by 'A' command (legacy)
+
+	// Timing constants
+	drainSilenceMs = 100                     // silence threshold for drain loop
+	drainTimeout   = 1500 * time.Millisecond // max time to spend draining
+	readTimeout    = 2 * time.Second         // per INI blockReadTimeout=2000
 )
 
 // Speeduino implements the Provider interface for Speeduino ECUs.
 //
-// It auto-detects whether the connected port uses the Secondary Serial IO
-// protocol (plain A/r commands) or the msEnvelope protocol (CRC32 framed),
-// and adapts accordingly.
+// Two explicit protocol modes, selected via config (no auto-detection):
 //
-// The Speeduino's secondary serial port can be configured to different
-// protocol modes via secondarySerialProtocol in TunerStudio:
+//   - "generic"      — plain n/A commands on the secondary serial port
+//   - "tunerstudio"  — msEnvelope CRC32-framed r command (primary/USB or
+//     secondary port with secondarySerialProtocol="Tuner Studio")
 //
-//	0: Generic (Fixed List) — uses plain A/n/r commands
-//	1: Generic (ini File)   — uses plain A/n/r commands
-//	2: CAN
-//	3: msDroid
-//	4: Real Dash
-//	5: Tuner Studio          — uses msEnvelope (same as primary port)
-//
-// Protocol reference: docs/SPEEDUINO_SECONDARY_SERIAL_PROTOCOL.md
+// This driver is strictly read-only. It never sends write/burn/reset
+// commands to the ECU, eliminating any risk of modifying ECU settings.
 type Speeduino struct {
-	portPath  string
-	baudRate  int
-	canID     byte
-	port      serial.Port
-	mu        sync.Mutex
-	stoich    float64      // Stoichiometric ratio for lambda calc
-	proto     protocolMode // Detected protocol
-	protocol  string       // Configured protocol preference (auto/secondary/msenvelope)
-	connected bool         // True only after Connect() successfully handshakes
+	portPath string
+	baudRate int
+	canID    byte
+	port     serial.Port
+	mu       sync.Mutex
+	stoich   float64      // Stoichiometric ratio for lambda calc
+	proto    protocolMode // Protocol mode
+	useNCmd  bool         // true if generic mode uses 'n', false for 'A' fallback
+
+	connected bool // True only after Connect() successfully handshakes
 }
 
 // SpeeduinoConfig holds connection configuration for the Speeduino provider.
@@ -62,24 +70,8 @@ type SpeeduinoConfig struct {
 	BaudRate int     `yaml:"baud_rate" json:"baudRate"`
 	CanID    byte    `yaml:"can_id" json:"canId"`
 	Stoich   float64 `yaml:"stoich" json:"stoich"`     // e.g. 14.7 for gasoline
-	Protocol string  `yaml:"protocol" json:"protocol"` // "auto", "secondary", "msenvelope"
+	Protocol string  `yaml:"protocol" json:"protocol"` // "tunerstudio" or "generic"
 }
-
-const (
-	// Primary port (msEnvelope) constants
-	primaryOCHBlockSize = 130
-	rCommandType        = 0x30
-
-	// Secondary port constants
-	secondaryADataSize = 75  // Bytes returned by 'A' command
-	secondaryNDataSize = 119 // Bytes returned by 'n' command (current as of firmware 202409)
-	secondaryRDataSize = 119 // Request 119 bytes via 'r' for full data set
-
-	// Drain / timing constants
-	drainSilenceMs = 100                     // silence threshold for drain loop
-	drainTimeout   = 1500 * time.Millisecond // max time to spend draining
-	postWriteDelay = 80 * time.Millisecond   // delay after write before read
-)
 
 // NewSpeeduino creates a new Speeduino ECU provider.
 func NewSpeeduino(cfg SpeeduinoConfig) *Speeduino {
@@ -89,38 +81,55 @@ func NewSpeeduino(cfg SpeeduinoConfig) *Speeduino {
 	if cfg.Stoich == 0 {
 		cfg.Stoich = 14.7
 	}
-	if cfg.Protocol == "" {
-		cfg.Protocol = "auto"
+
+	proto := protoGeneric
+	if cfg.Protocol == "tunerstudio" {
+		proto = protoTunerStudio
 	}
+
 	return &Speeduino{
 		portPath: cfg.PortPath,
 		baudRate: cfg.BaudRate,
 		canID:    cfg.CanID,
 		stoich:   cfg.Stoich,
-		protocol: cfg.Protocol,
+		proto:    proto,
+		useNCmd:  true, // default to 'n' for generic, may fallback to 'A'
 	}
 }
 
 func (s *Speeduino) Name() string { return "Speeduino" }
 
-// Connect opens the serial port and auto-detects the protocol.
+// IsConnected returns whether the ECU is currently connected and handshook.
+func (s *Speeduino) IsConnected() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.connected
+}
+
+// Connect opens the serial port and performs a protocol-specific handshake.
 //
-// Detection order (msEnvelope FIRST to avoid corrupting the msEnvelope parser
-// with plain command bytes — once plain bytes enter the msEnvelope parser,
-// it tries to interpret them as size headers, causing persistent framing errors):
+// For "generic" mode:
+//  1. Open port, wait 1s (per INI delayAfterPortOpen=1000), drain boot garbage
+//  2. Send 'n' command, look for 0x6E 0x32 header → success
+//  3. If 'n' fails, try 'A' command, look for 0x41 echo → success with A fallback
 //
-//  1. Try msEnvelope 'Q' command (safe — on secondary Generic mode, the 'Q' byte
-//     is still handled and the envelope overhead is harmlessly consumed)
-//  2. Try msEnvelope 'r' command (full OCH block request)
-//  3. Wait for msEnvelope parser timeout (blockReadTimeout=2000ms per INI)
-//  4. Try plain 'n' command (secondary port in Generic mode)
-//  5. Try plain 'A' command (legacy fallback)
+// For "tunerstudio" mode:
+//  1. Open port, wait 1s, drain boot garbage
+//  2. Send msEnvelope-framed 'Q' command, validate CRC32 response → success
 //
-// The protocol config option can force a specific mode:
-//   - "auto"       — try all protocols in order (default)
-//   - "msenvelope" — only try msEnvelope
-//   - "secondary"  — only try secondary serial (plain commands)
+// On failure, the port is closed and an error is returned.
+// The caller (main.go connectWithRetry) handles retry with backoff.
 func (s *Speeduino) Connect() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Close any existing connection
+	if s.port != nil {
+		s.port.Close()
+		s.port = nil
+		s.connected = false
+	}
+
 	mode := &serial.Mode{
 		BaudRate: s.baudRate,
 		DataBits: 8,
@@ -131,439 +140,300 @@ func (s *Speeduino) Connect() error {
 	if err != nil {
 		return fmt.Errorf("speeduino: failed to open %s: %w", s.portPath, err)
 	}
-	if err := port.SetReadTimeout(2 * time.Second); err != nil {
+	if err := port.SetReadTimeout(readTimeout); err != nil {
 		port.Close()
 		return fmt.Errorf("speeduino: failed to set timeout: %w", err)
 	}
-	s.mu.Lock()
 	s.port = port
-	s.mu.Unlock()
 
-	log.Printf("[speeduino] opened %s at %d baud (protocol=%s)", s.portPath, s.baudRate, s.protocol)
+	protoName := "generic"
+	if s.proto == protoTunerStudio {
+		protoName = "tunerstudio"
+	}
+	log.Printf("[speeduino] opened %s at %d baud (protocol=%s)", s.portPath, s.baudRate, protoName)
 
 	// Required post-open delay per Speeduino INI (delayAfterPortOpen=1000)
 	time.Sleep(1 * time.Second)
 
-	// Aggressively drain any boot garbage or unsolicited ECU output
+	// Passively drain any boot garbage or unsolicited ECU output
 	s.drainSerial("boot")
 
-	tryMsEnvelope := s.protocol == "auto" || s.protocol == "msenvelope"
-	trySecondary := s.protocol == "auto" || s.protocol == "secondary"
-
-	// =========================================================================
-	// Phase 1: msEnvelope — try FIRST to avoid corrupting the TS parser
-	// =========================================================================
-	if tryMsEnvelope {
-		// DO NOT send null-byte flushes here — they corrupt the msEnvelope
-		// parser. Just drain, then send a clean msEnvelope Q command.
-
-		// --- Try 1a: msEnvelope 'Q' command (version query) ---
-		// This is the safest msEnvelope probe: if the ECU is in Generic mode,
-		// the secondary parser handles 'Q' (version response) and the envelope
-		// overhead bytes (size header, CRC) are consumed as unknown commands.
-		// If the ECU is in TS mode, it processes the full msEnvelope Q.
-		log.Printf("[speeduino] trying msEnvelope 'Q' command on %s...", s.portPath)
-		if err := s.tryMsEnvelopeQ(); err == nil {
-			s.proto = protoPrimary
-			s.connected = true
-			log.Printf("[speeduino] connected to %s at %d baud (msEnvelope protocol via Q)", s.portPath, s.baudRate)
-			return nil
-		} else {
-			log.Printf("[speeduino] msEnvelope 'Q' attempt failed: %v", err)
+	switch s.proto {
+	case protoGeneric:
+		if err := s.connectGeneric(); err != nil {
+			s.port.Close()
+			s.port = nil
+			return err
 		}
-
-		// Drain Q response data
-		s.drainSerial("post-Q-envelope")
-
-		// --- Try 1b: msEnvelope 'r' command (data request) ---
-		log.Printf("[speeduino] trying msEnvelope 'r' command on %s...", s.portPath)
-		if err := s.tryPrimaryHandshake(); err == nil {
-			s.proto = protoPrimary
-			s.connected = true
-			log.Printf("[speeduino] connected to %s at %d baud (msEnvelope protocol)", s.portPath, s.baudRate)
-			return nil
-		} else {
-			log.Printf("[speeduino] msEnvelope 'r' attempt failed: %v", err)
-		}
-
-		// Drain and wait for the msEnvelope parser to time out and reset.
-		// Per INI: blockReadTimeout=2000ms. We wait a bit longer to be safe.
-		s.drainSerial("post-r-envelope")
-		if trySecondary {
-			log.Printf("[speeduino] waiting for msEnvelope parser timeout before trying secondary...")
-			time.Sleep(2500 * time.Millisecond)
-			s.drainSerial("post-timeout")
+	case protoTunerStudio:
+		if err := s.connectTunerStudio(); err != nil {
+			s.port.Close()
+			s.port = nil
+			return err
 		}
 	}
 
-	// =========================================================================
-	// Phase 2: Secondary serial (plain commands)
-	// =========================================================================
-	if trySecondary {
-		// Flush the ECU command buffer with null bytes — this is safe for
-		// the secondary parser (each 0x00 is handled as unknown: break).
-		s.flushECUCommandBuffer()
-
-		// --- Diagnostic: send plain 'Q' (version query) ---
-		s.probeVersion()
-
-		// --- Try 2a: secondary serial 'n' command ---
-		s.flushECUCommandBuffer()
-		log.Printf("[speeduino] trying secondary serial 'n' command on %s...", s.portPath)
-		if err := s.trySecondaryHandshakeN(); err == nil {
-			s.proto = protoSecondaryN
-			s.connected = true
-			log.Printf("[speeduino] connected to %s at %d baud (secondary serial 'n' protocol)", s.portPath, s.baudRate)
-			return nil
-		} else {
-			log.Printf("[speeduino] secondary serial 'n' attempt failed: %v", err)
-		}
-
-		s.drainSerial("post-n-cmd")
-
-		// --- Try 2b: secondary serial plain 'A' command (legacy fallback) ---
-		s.flushECUCommandBuffer()
-		log.Printf("[speeduino] trying secondary serial 'A' command on %s...", s.portPath)
-		if err := s.trySecondaryHandshakeA(); err == nil {
-			s.proto = protoSecondaryA
-			s.connected = true
-			log.Printf("[speeduino] connected to %s at %d baud (secondary serial 'A' protocol)", s.portPath, s.baudRate)
-			return nil
-		} else {
-			log.Printf("[speeduino] secondary serial 'A' attempt failed: %v", err)
-		}
-	}
-
-	s.mu.Lock()
-	s.port.Close()
-	s.port = nil
-	s.mu.Unlock()
-	return fmt.Errorf("speeduino: no valid protocol detected on %s (tried: protocol=%s) — check secondarySerialProtocol setting in TunerStudio and wiring", s.portPath, s.protocol)
+	s.connected = true
+	log.Printf("[speeduino] connected to %s (protocol=%s)", s.portPath, protoName)
+	return nil
 }
 
-// drainSerial reads and discards all pending data from the serial port
-// until there is silence (no data) for drainSilenceMs, or drainTimeout
-// has elapsed. This handles unsolicited ECU output, stale buffers, and
-// streaming protocol modes (RealDash, msDroid).
-func (s *Speeduino) drainSerial(label string) {
+// connectGeneric handshakes using the plain secondary serial protocol.
+// Tries 'n' first (enhanced 119-byte data set), falls back to 'A' (legacy 75-byte).
+func (s *Speeduino) connectGeneric() error {
+	// --- Try 'n' command ---
+	log.Printf("[speeduino] trying 'n' command on %s...", s.portPath)
+
 	s.port.ResetInputBuffer()
-
-	// Short timeout for drain reads
-	s.port.SetReadTimeout(time.Duration(drainSilenceMs) * time.Millisecond)
-	defer s.port.SetReadTimeout(2 * time.Second)
-
-	totalDrained := 0
-	deadline := time.Now().Add(drainTimeout)
-	buf := make([]byte, 256)
-
-	for time.Now().Before(deadline) {
-		n, _ := s.port.Read(buf)
-		if n == 0 {
-			break // silence — buffer is clear
-		}
-		if totalDrained == 0 {
-			log.Printf("[speeduino] drain(%s) first bytes: % X", label, buf[:n])
-		}
-		totalDrained += n
-	}
-	if totalDrained > 0 {
-		log.Printf("[speeduino] drain(%s) cleared %d bytes total", label, totalDrained)
-	}
-}
-
-// flushECUCommandBuffer sends null bytes (0x00) to the ECU to push through
-// any stale bytes stuck in the secondary serial command parser. The firmware's
-// secondserial_Command() treats 0x00 as an unknown command (default: break),
-// so these are harmlessly consumed one per main loop iteration.
-// After sending, we drain any resulting output.
-func (s *Speeduino) flushECUCommandBuffer() {
-	// Send 20 null bytes — enough to flush through any partial command state
-	flush := make([]byte, 20)
-	s.port.Write(flush)
-
-	// Wait for ECU to process all null bytes (each consumed once per main loop, ~1ms each)
-	time.Sleep(200 * time.Millisecond)
-
-	// Drain any output generated while processing
-	s.drainSerial("flush")
-}
-
-// probeVersion sends 'Q' and 'S' commands and logs whatever comes back.
-// This is diagnostic-only — it helps determine whether the ECU is reachable
-// at all before trying protocol-specific handshakes.
-//
-// 'Q' returns a 20-byte ASCII version string on the primary port (e.g.
-// "speeduino 202409-dev") and is also handled on the secondary port.
-// 'S' is handled similarly. If we get ASCII back, we know the ECU is alive.
-func (s *Speeduino) probeVersion() {
-	for _, cmd := range []struct {
-		name string
-		b    byte
-	}{
-		{"Q", 'Q'},
-		{"S", 'S'},
-	} {
-		s.port.ResetInputBuffer()
-		if _, err := s.port.Write([]byte{cmd.b}); err != nil {
-			log.Printf("[speeduino] probe '%s' write failed: %v", cmd.name, err)
-			continue
-		}
-
-		time.Sleep(postWriteDelay)
-
-		buf := make([]byte, 128)
-		resp := make([]byte, 0, 128)
-		deadline := time.Now().Add(1 * time.Second)
-		for len(resp) < 128 && time.Now().Before(deadline) {
-			n, _ := s.port.Read(buf)
-			if n == 0 {
-				break
-			}
-			resp = append(resp, buf[:n]...)
-		}
-
-		if len(resp) > 0 {
-			// Check if response looks like ASCII text
-			isASCII := true
-			for _, b := range resp {
-				if b < 0x20 || b > 0x7E {
-					isASCII = false
-					break
-				}
-			}
-			if isASCII {
-				log.Printf("[speeduino] probe '%s' response (%d bytes, ASCII): %s", cmd.name, len(resp), string(resp))
-			} else {
-				log.Printf("[speeduino] probe '%s' response (%d bytes, binary): % X", cmd.name, len(resp), resp)
-			}
-		} else {
-			log.Printf("[speeduino] probe '%s' response: no data (ECU may not be reachable)", cmd.name)
-		}
-	}
-
-	// Drain any remaining probe data
-	s.drainSerial("post-probe")
-}
-
-// trySecondaryHandshakeN sends the 'n' command and looks for the distinctive
-// 3-byte header: echo(0x6E) + type(0x32) + length byte.
-// This is the most robust detection method since the header signature is
-// very unlikely to appear in random data.
-func (s *Speeduino) trySecondaryHandshakeN() error {
 	if _, err := s.port.Write([]byte{'n'}); err != nil {
-		return fmt.Errorf("write failed: %w", err)
+		return fmt.Errorf("speeduino: n write failed: %w", err)
 	}
 
-	time.Sleep(postWriteDelay)
+	// Collect response: echo(0x6E) + type(0x32) + length + data
+	maxResp := 3 + genericNDataSize
+	resp, err := s.readResponse(maxResp, readTimeout)
+	if err == nil {
+		log.Printf("[speeduino] 'n' response (%d bytes): % X", len(resp), resp)
 
-	// Collect response bytes (echo + type + length + up to 119 data bytes)
-	maxResp := 3 + secondaryNDataSize
-	resp := make([]byte, 0, maxResp)
-	deadline := time.Now().Add(2 * time.Second)
-
-	for len(resp) < maxResp && time.Now().Before(deadline) {
-		buf := make([]byte, maxResp-len(resp))
-		n, err := s.port.Read(buf)
-		if err != nil && n == 0 {
-			break
-		}
-		if n > 0 {
-			resp = append(resp, buf[:n]...)
-		}
-	}
-
-	log.Printf("[speeduino] 'n' command raw response (%d bytes): % X", len(resp), resp)
-
-	// Scan for the signature: 0x6E 0x32 <length>
-	for i := 0; i+2 < len(resp); i++ {
-		if resp[i] == 0x6E && resp[i+1] == 0x32 {
-			dataLen := int(resp[i+2])
-			log.Printf("[speeduino] 'n' echo found at offset %d, data length=%d", i, dataLen)
-
-			// Verify we got enough data bytes after the header
-			headerEnd := i + 3
-			available := len(resp) - headerEnd
-			if available < dataLen {
-				log.Printf("[speeduino] 'n' incomplete data: have %d, want %d (may still work)", available, dataLen)
+		// Scan for signature: 0x6E 0x32 <length>
+		for i := 0; i+2 < len(resp); i++ {
+			if resp[i] == 0x6E && resp[i+1] == 0x32 {
+				dataLen := int(resp[i+2])
+				log.Printf("[speeduino] 'n' echo at offset %d, data length=%d", i, dataLen)
+				s.useNCmd = true
+				return nil
 			}
-			return nil
 		}
+		log.Printf("[speeduino] 'n' echo signature (6E 32) not found")
+	} else {
+		log.Printf("[speeduino] 'n' command failed: %v", err)
 	}
 
-	return fmt.Errorf("'n' echo signature (6E 32) not found in %d bytes", len(resp))
-}
+	// Drain any leftover from 'n' attempt
+	s.drainSerial("post-n")
 
-// trySecondaryHandshakeA sends a plain 'A' command and scans the response
-// for the 0x41 echo byte, tolerating any leading garbage from unsolicited
-// ECU output or previous protocol probes.
-func (s *Speeduino) trySecondaryHandshakeA() error {
+	// --- Fallback: try 'A' command ---
+	log.Printf("[speeduino] trying 'A' command on %s...", s.portPath)
+
+	s.port.ResetInputBuffer()
 	if _, err := s.port.Write([]byte{'A'}); err != nil {
-		return fmt.Errorf("write failed: %w", err)
+		return fmt.Errorf("speeduino: A write failed: %w", err)
 	}
 
-	time.Sleep(postWriteDelay)
+	resp, err = s.readResponse(1+genericADataSize+32, readTimeout) // extra margin for garbage
+	if err == nil {
+		log.Printf("[speeduino] 'A' response (%d bytes): % X", len(resp), resp)
 
-	// Read a generous buffer — 'A' returns 1 (echo) + 75 data = 76 bytes,
-	// but there may be leading garbage.
-	maxResp := 256
-	resp := make([]byte, 0, maxResp)
-	deadline := time.Now().Add(2 * time.Second)
-
-	for len(resp) < maxResp && time.Now().Before(deadline) {
-		buf := make([]byte, maxResp-len(resp))
-		n, err := s.port.Read(buf)
-		if err != nil && n == 0 {
-			break
-		}
-		if n > 0 {
-			resp = append(resp, buf[:n]...)
-		}
-		// Once we have at least 76 bytes after an 'A', we can stop
+		// Scan for 0x41 echo with enough data following
 		for j := 0; j < len(resp); j++ {
-			if resp[j] == 0x41 && len(resp)-j >= 1+secondaryADataSize {
-				log.Printf("[speeduino] 'A' echo found at offset %d (total %d bytes)", j, len(resp))
+			if resp[j] == 0x41 && len(resp)-j >= 1+genericADataSize {
+				log.Printf("[speeduino] 'A' echo at offset %d", j)
+				s.useNCmd = false
+				return nil
+			}
+		}
+		// Accept echo even without full data (ECU may be slow)
+		for j := 0; j < len(resp); j++ {
+			if resp[j] == 0x41 {
+				log.Printf("[speeduino] 'A' echo at offset %d (data may be incomplete)", j)
+				s.useNCmd = false
 				return nil
 			}
 		}
 	}
 
-	log.Printf("[speeduino] 'A' command raw response (%d bytes): % X", len(resp), resp)
-
-	// Final scan
-	for j := 0; j < len(resp); j++ {
-		if resp[j] == 0x41 {
-			log.Printf("[speeduino] 'A' echo found at offset %d (data may be incomplete)", j)
-			return nil
-		}
-	}
-
-	return fmt.Errorf("'A' echo (0x41) not found in %d bytes of response", len(resp))
+	return fmt.Errorf("speeduino: generic handshake failed on %s — no valid 'n' or 'A' response (check secondarySerialProtocol is set to Generic in TunerStudio)", s.portPath)
 }
 
-// tryPrimaryHandshake sends an msEnvelope-framed 'r' command and validates the response.
-func (s *Speeduino) tryPrimaryHandshake() error {
-	envelope := s.buildMsEnvelope(0, 4)
-	log.Printf("[speeduino] sending msEnvelope (%d bytes): % X", len(envelope), envelope)
+// connectTunerStudio handshakes using the msEnvelope CRC32-framed protocol.
+// Sends a framed 'Q' (version query) and validates the CRC32 response.
+func (s *Speeduino) connectTunerStudio() error {
+	log.Printf("[speeduino] trying msEnvelope 'Q' on %s...", s.portPath)
 
-	if _, err := s.port.Write(envelope); err != nil {
-		return fmt.Errorf("write failed: %w", err)
-	}
-
-	time.Sleep(postWriteDelay)
-
-	payload, err := s.readMsEnvelopeResponse()
-	if err != nil {
-		return err
-	}
-
-	log.Printf("[speeduino] msEnvelope handshake OK (payload %d bytes): % X", len(payload), payload)
-	return nil
-}
-
-// tryMsEnvelopeQ sends an msEnvelope-framed 'Q' command and checks for a valid response.
-// This is the safest msEnvelope probe because:
-//   - If the ECU is in TS mode: it processes the full msEnvelope Q and responds in kind
-//   - If the ECU is in Generic mode: the 'Q' byte inside the envelope triggers a plain
-//     version response; the envelope overhead is consumed as unknown commands (harmless)
-//
-// We check for both an msEnvelope-framed response (TS mode) and fall back to checking
-// for a plain ASCII version string (Generic mode responding to the unwrapped Q).
-func (s *Speeduino) tryMsEnvelopeQ() error {
 	s.port.ResetInputBuffer()
 
-	envelope := s.buildMsEnvelopeCmd('Q')
+	envelope := s.wrapMsEnvelope([]byte{'Q'})
 	log.Printf("[speeduino] sending msEnvelope Q (%d bytes): % X", len(envelope), envelope)
 
 	if _, err := s.port.Write(envelope); err != nil {
-		return fmt.Errorf("write failed: %w", err)
+		return fmt.Errorf("speeduino: Q write failed: %w", err)
 	}
 
-	time.Sleep(postWriteDelay)
+	// Read the msEnvelope response
+	payload, err := s.readMsEnvelopeResponse()
+	if err != nil {
+		return fmt.Errorf("speeduino: msEnvelope Q handshake failed: %w", err)
+	}
 
-	// Read whatever comes back — could be msEnvelope-framed or plain ASCII
-	maxResp := 256
-	resp := make([]byte, 0, maxResp)
-	deadline := time.Now().Add(2 * time.Second)
-
-	for len(resp) < maxResp && time.Now().Before(deadline) {
-		buf := make([]byte, maxResp-len(resp))
-		n, err := s.port.Read(buf)
-		if err != nil && n == 0 {
-			break
-		}
-		if n > 0 {
-			resp = append(resp, buf[:n]...)
-		}
-		// If we have a reasonable amount of data, break early
-		if len(resp) > 20 {
-			// Short sleep to catch any trailing bytes
-			time.Sleep(50 * time.Millisecond)
-			buf2 := make([]byte, 128)
-			n2, _ := s.port.Read(buf2)
-			if n2 > 0 {
-				resp = append(resp, buf2[:n2]...)
-			}
+	// Check if payload looks like an ASCII version string
+	isASCII := true
+	for _, b := range payload {
+		if b < 0x20 || b > 0x7E {
+			isASCII = false
 			break
 		}
 	}
-
-	log.Printf("[speeduino] msEnvelope Q response (%d bytes): % X", len(resp), resp)
-
-	if len(resp) < 2 {
-		return fmt.Errorf("no response to msEnvelope Q (%d bytes)", len(resp))
+	if isASCII {
+		log.Printf("[speeduino] msEnvelope Q: version = %q", string(payload))
+	} else {
+		log.Printf("[speeduino] msEnvelope Q: payload (%d bytes) = % X", len(payload), payload)
 	}
 
-	// Check 1: Valid msEnvelope response? (size + payload + CRC32)
-	respPayloadSize := int(binary.BigEndian.Uint16(resp[:2]))
-	if respPayloadSize > 0 && respPayloadSize < 128 && len(resp) >= 2+respPayloadSize+4 {
-		payload := resp[2 : 2+respPayloadSize]
-		respCRC := binary.BigEndian.Uint32(resp[2+respPayloadSize : 2+respPayloadSize+4])
-		calcCRC := crc32.ChecksumIEEE(payload)
-
-		if respCRC == calcCRC {
-			// Check if payload looks like a version string (ASCII)
-			isASCII := true
-			for _, b := range payload {
-				if b < 0x20 || b > 0x7E {
-					isASCII = false
-					break
-				}
-			}
-			if isASCII {
-				log.Printf("[speeduino] msEnvelope Q: valid CRC, version = %q", string(payload))
-			} else {
-				log.Printf("[speeduino] msEnvelope Q: valid CRC, payload = % X", payload)
-			}
-			return nil
-		}
-		log.Printf("[speeduino] msEnvelope Q: CRC mismatch (got=0x%08X calc=0x%08X)", respCRC, calcCRC)
-	}
-
-	// Check 2: Plain ASCII version string? (ECU in Generic mode responded to bare Q)
-	// The envelope bytes before Q are consumed as unknown commands, so the response
-	// is a plain version string like "speeduino 202409-dev"
-	for i := 0; i < len(resp); i++ {
-		if resp[i] >= 0x20 && resp[i] <= 0x7E {
-			// Found printable ASCII — check if there's a contiguous run
-			end := i
-			for end < len(resp) && resp[end] >= 0x20 && resp[end] <= 0x7E {
-				end++
-			}
-			asciiStr := string(resp[i:end])
-			if len(asciiStr) >= 5 {
-				log.Printf("[speeduino] msEnvelope Q: got plain ASCII response %q — ECU appears to be in Generic (secondary) mode, not msEnvelope", asciiStr)
-				// This means the ECU is NOT in TS mode — it's in Generic mode.
-				// Return error so Connect() falls through to secondary probes.
-				return fmt.Errorf("ECU responded with plain ASCII (%q) — not in msEnvelope mode", asciiStr)
-			}
-		}
-	}
-
-	return fmt.Errorf("msEnvelope Q: unrecognized response (%d bytes)", len(resp))
+	return nil
 }
 
-// buildMsEnvelope constructs an msEnvelope-framed 'r' command.
-func (s *Speeduino) buildMsEnvelope(offset, length uint16) []byte {
+// Close cleanly shuts down the serial connection.
+func (s *Speeduino) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.connected = false
+	if s.port != nil {
+		err := s.port.Close()
+		s.port = nil
+		return err
+	}
+	return nil
+}
+
+// RequestData sends a read-only data request and parses the response.
+func (s *Speeduino) RequestData() (*DataFrame, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.connected || s.port == nil {
+		return nil, fmt.Errorf("speeduino: not connected")
+	}
+
+	switch s.proto {
+	case protoGeneric:
+		return s.requestGeneric()
+	case protoTunerStudio:
+		return s.requestTunerStudio()
+	default:
+		return nil, fmt.Errorf("speeduino: unknown protocol mode")
+	}
+}
+
+// ============================================================================
+// Generic Protocol — plain commands, no envelope
+// ============================================================================
+
+// requestGeneric sends the 'n' or 'A' command and parses the data.
+func (s *Speeduino) requestGeneric() (*DataFrame, error) {
+	if s.useNCmd {
+		return s.requestGenericN()
+	}
+	return s.requestGenericA()
+}
+
+// requestGenericN sends the 'n' command and parses the enhanced data set.
+func (s *Speeduino) requestGenericN() (*DataFrame, error) {
+	s.port.ResetInputBuffer()
+
+	if _, err := s.port.Write([]byte{'n'}); err != nil {
+		s.connected = false
+		return nil, fmt.Errorf("speeduino: write failed: %w", err)
+	}
+
+	// Response: echo(0x6E) + type(0x32) + length(1 byte) + data bytes
+	header := make([]byte, 3)
+	if err := s.readExact(header, readTimeout); err != nil {
+		s.connected = false
+		return nil, fmt.Errorf("speeduino: n-cmd header: %w", err)
+	}
+
+	if header[0] != 0x6E {
+		return nil, fmt.Errorf("speeduino: n-cmd unexpected echo: got 0x%02X, want 0x6E", header[0])
+	}
+	if header[1] != 0x32 {
+		return nil, fmt.Errorf("speeduino: n-cmd unexpected type: got 0x%02X, want 0x32", header[1])
+	}
+
+	dataLen := int(header[2])
+	if dataLen == 0 || dataLen > 256 {
+		return nil, fmt.Errorf("speeduino: n-cmd invalid length: %d", dataLen)
+	}
+
+	data := make([]byte, dataLen)
+	if err := s.readExact(data, readTimeout); err != nil {
+		s.connected = false
+		return nil, fmt.Errorf("speeduino: n-cmd data: %w", err)
+	}
+
+	return s.parseSecondaryData(data), nil
+}
+
+// requestGenericA sends the legacy 'A' command and parses the simple data set.
+func (s *Speeduino) requestGenericA() (*DataFrame, error) {
+	s.port.ResetInputBuffer()
+
+	if _, err := s.port.Write([]byte{'A'}); err != nil {
+		s.connected = false
+		return nil, fmt.Errorf("speeduino: write failed: %w", err)
+	}
+
+	// Response: echo(0x41) + 75 data bytes = 76 total
+	respLen := 1 + genericADataSize
+	resp := make([]byte, respLen)
+	if err := s.readExact(resp, readTimeout); err != nil {
+		s.connected = false
+		return nil, fmt.Errorf("speeduino: A-cmd: %w", err)
+	}
+
+	if resp[0] != 0x41 {
+		return nil, fmt.Errorf("speeduino: A-cmd unexpected echo: got 0x%02X, want 0x41", resp[0])
+	}
+
+	data := resp[1:]
+	return s.parseSecondaryData(data), nil
+}
+
+// ============================================================================
+// TunerStudio Protocol — msEnvelope CRC32 framed
+// ============================================================================
+
+// requestTunerStudio sends an msEnvelope-framed 'r' command and reads the enveloped response.
+func (s *Speeduino) requestTunerStudio() (*DataFrame, error) {
+	s.port.ResetInputBuffer()
+
+	envelope := s.buildMsEnvelopeR(0, ochBlockSize)
+
+	if _, err := s.port.Write(envelope); err != nil {
+		s.connected = false
+		return nil, fmt.Errorf("speeduino: write failed: %w", err)
+	}
+
+	// Response is msEnvelope-framed: <size_hi><size_lo><payload><crc32>
+	payload, err := s.readMsEnvelopeResponse()
+	if err != nil {
+		s.connected = false
+		return nil, fmt.Errorf("speeduino: %w", err)
+	}
+
+	// The payload may include a status byte prefix before the OCH data.
+	var data []byte
+	switch {
+	case len(payload) == ochBlockSize:
+		data = payload
+	case len(payload) == ochBlockSize+1:
+		// Skip the status byte (first byte)
+		data = payload[1:]
+	case len(payload) > ochBlockSize:
+		// Take the last ochBlockSize bytes
+		data = payload[len(payload)-ochBlockSize:]
+	default:
+		return nil, fmt.Errorf("speeduino: unexpected payload size: %d (want %d)", len(payload), ochBlockSize)
+	}
+
+	return s.parsePrimaryData(data), nil
+}
+
+// ============================================================================
+// msEnvelope framing helpers
+// ============================================================================
+
+// buildMsEnvelopeR constructs an msEnvelope-framed 'r' command.
+func (s *Speeduino) buildMsEnvelopeR(offset, length uint16) []byte {
 	payload := []byte{
 		'r',
 		s.canID,
@@ -572,12 +442,6 @@ func (s *Speeduino) buildMsEnvelope(offset, length uint16) []byte {
 		byte(length & 0xFF), byte(length >> 8),
 	}
 	return s.wrapMsEnvelope(payload)
-}
-
-// buildMsEnvelopeCmd constructs an msEnvelope-framed single-byte command.
-// Used for commands like 'Q' (version query) that don't need extra parameters.
-func (s *Speeduino) buildMsEnvelopeCmd(cmd byte) []byte {
-	return s.wrapMsEnvelope([]byte{cmd})
 }
 
 // wrapMsEnvelope wraps a payload in the msEnvelope format:
@@ -603,19 +467,19 @@ func (s *Speeduino) wrapMsEnvelope(payload []byte) []byte {
 func (s *Speeduino) readMsEnvelopeResponse() ([]byte, error) {
 	// Step 1: Read the 2-byte size header
 	sizeHeader := make([]byte, 2)
-	if err := s.readExact(sizeHeader, 2*time.Second); err != nil {
+	if err := s.readExact(sizeHeader, readTimeout); err != nil {
 		return nil, fmt.Errorf("size header: %w", err)
 	}
 	respPayloadSize := int(binary.BigEndian.Uint16(sizeHeader))
 	log.Printf("[speeduino] response envelope: payload size = %d", respPayloadSize)
 
 	if respPayloadSize == 0 || respPayloadSize > 1024 {
-		return nil, fmt.Errorf("invalid payload size: %d", respPayloadSize)
+		return nil, fmt.Errorf("invalid payload size: %d (raw header: %02X %02X)", respPayloadSize, sizeHeader[0], sizeHeader[1])
 	}
 
 	// Step 2: Read payload + 4-byte CRC32
 	rest := make([]byte, respPayloadSize+4)
-	if err := s.readExact(rest, 2*time.Second); err != nil {
+	if err := s.readExact(rest, readTimeout); err != nil {
 		return nil, fmt.Errorf("payload+crc: %w", err)
 	}
 
@@ -623,13 +487,44 @@ func (s *Speeduino) readMsEnvelopeResponse() ([]byte, error) {
 	respCRC := binary.BigEndian.Uint32(rest[respPayloadSize:])
 	calcCRC := crc32.ChecksumIEEE(payload)
 
-	log.Printf("[speeduino] response CRC: got=0x%08X calc=0x%08X", respCRC, calcCRC)
-
 	if respCRC != calcCRC {
-		return nil, fmt.Errorf("CRC mismatch: got 0x%08X, want 0x%08X", respCRC, calcCRC)
+		return nil, fmt.Errorf("CRC mismatch: got 0x%08X, want 0x%08X (payload %d bytes)", respCRC, calcCRC, respPayloadSize)
 	}
 
 	return payload, nil
+}
+
+// ============================================================================
+// Serial I/O helpers
+// ============================================================================
+
+// drainSerial reads and discards all pending data from the serial port
+// until there is silence for drainSilenceMs, or drainTimeout has elapsed.
+// This is a passive operation — no bytes are written.
+func (s *Speeduino) drainSerial(label string) {
+	s.port.ResetInputBuffer()
+
+	// Short timeout for drain reads
+	s.port.SetReadTimeout(time.Duration(drainSilenceMs) * time.Millisecond)
+	defer s.port.SetReadTimeout(readTimeout)
+
+	totalDrained := 0
+	deadline := time.Now().Add(drainTimeout)
+	buf := make([]byte, 256)
+
+	for time.Now().Before(deadline) {
+		n, _ := s.port.Read(buf)
+		if n == 0 {
+			break // silence — buffer is clear
+		}
+		if totalDrained == 0 {
+			log.Printf("[speeduino] drain(%s) first bytes: % X", label, buf[:n])
+		}
+		totalDrained += n
+	}
+	if totalDrained > 0 {
+		log.Printf("[speeduino] drain(%s) cleared %d bytes total", label, totalDrained)
+	}
 }
 
 // readExact reads exactly len(buf) bytes from the serial port within the deadline.
@@ -644,202 +539,34 @@ func (s *Speeduino) readExact(buf []byte, timeout time.Duration) error {
 		got += n
 	}
 	if got < len(buf) {
-		log.Printf("[speeduino] readExact: got %d/%d bytes: % X", got, len(buf), buf[:got])
 		return fmt.Errorf("incomplete: got %d bytes, want %d", got, len(buf))
 	}
 	return nil
 }
 
-func (s *Speeduino) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.connected = false
-	if s.port != nil {
-		err := s.port.Close()
-		s.port = nil
-		return err
-	}
-	return nil
-}
+// readResponse reads up to maxBytes within timeout, returning whatever was received.
+func (s *Speeduino) readResponse(maxBytes int, timeout time.Duration) ([]byte, error) {
+	resp := make([]byte, 0, maxBytes)
+	deadline := time.Now().Add(timeout)
 
-// RequestData sends a data request and parses the response.
-func (s *Speeduino) RequestData() (*DataFrame, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if !s.connected || s.port == nil {
-		return nil, fmt.Errorf("speeduino: not connected")
-	}
-
-	switch s.proto {
-	case protoSecondaryN:
-		return s.requestSecondaryN()
-	case protoSecondaryA:
-		return s.requestSecondaryA()
-	case protoSecondaryR:
-		return s.requestSecondary()
-	case protoPrimary:
-		return s.requestPrimary()
-	default:
-		return nil, fmt.Errorf("speeduino: unknown protocol mode")
-	}
-}
-
-// ============================================================================
-// Secondary Serial Protocol — plain commands, no envelope
-// ============================================================================
-
-// requestSecondaryN sends the 'n' command and parses the enhanced data set.
-func (s *Speeduino) requestSecondaryN() (*DataFrame, error) {
-	if s.port == nil {
-		return nil, fmt.Errorf("speeduino: not connected")
-	}
-	s.port.ResetInputBuffer()
-
-	if _, err := s.port.Write([]byte{'n'}); err != nil {
-		return nil, fmt.Errorf("speeduino: write failed: %w", err)
-	}
-
-	// Response: echo(0x6E) + type(0x32) + length(1 byte) + data bytes
-	// Read header first: 3 bytes
-	header := make([]byte, 3)
-	if err := s.readExact(header, 2*time.Second); err != nil {
-		return nil, fmt.Errorf("speeduino: n-cmd header: %w", err)
-	}
-
-	if header[0] != 0x6E {
-		return nil, fmt.Errorf("speeduino: n-cmd unexpected echo: got 0x%02X, want 0x6E", header[0])
-	}
-	if header[1] != 0x32 {
-		return nil, fmt.Errorf("speeduino: n-cmd unexpected type: got 0x%02X, want 0x32", header[1])
-	}
-
-	dataLen := int(header[2])
-	if dataLen == 0 || dataLen > 256 {
-		return nil, fmt.Errorf("speeduino: n-cmd invalid length: %d", dataLen)
-	}
-
-	data := make([]byte, dataLen)
-	if err := s.readExact(data, 2*time.Second); err != nil {
-		return nil, fmt.Errorf("speeduino: n-cmd data: %w", err)
-	}
-
-	return s.parseSecondaryData(data), nil
-}
-
-// requestSecondaryA sends the legacy 'A' command and parses the simple data set.
-func (s *Speeduino) requestSecondaryA() (*DataFrame, error) {
-	s.port.ResetInputBuffer()
-
-	if _, err := s.port.Write([]byte{'A'}); err != nil {
-		return nil, fmt.Errorf("speeduino: write failed: %w", err)
-	}
-
-	// Response: echo(0x41) + 75 data bytes = 76 total
-	respLen := 1 + secondaryADataSize
-	resp := make([]byte, respLen)
-	if err := s.readExact(resp, 2*time.Second); err != nil {
-		return nil, fmt.Errorf("speeduino: A-cmd: %w", err)
-	}
-
-	if resp[0] != 0x41 {
-		return nil, fmt.Errorf("speeduino: A-cmd unexpected echo: got 0x%02X, want 0x41", resp[0])
-	}
-
-	data := resp[1:]
-	return s.parseSecondaryData(data), nil
-}
-
-// requestSecondary sends a plain 'r' command on the secondary serial port.
-func (s *Speeduino) requestSecondary() (*DataFrame, error) {
-	s.port.ResetInputBuffer()
-
-	offset := uint16(0)
-	length := uint16(secondaryRDataSize)
-
-	cmd := []byte{
-		'r',
-		s.canID,
-		rCommandType,
-		byte(offset & 0xFF), byte(offset >> 8),
-		byte(length & 0xFF), byte(length >> 8),
-	}
-
-	if _, err := s.port.Write(cmd); err != nil {
-		return nil, fmt.Errorf("speeduino: write failed: %w", err)
-	}
-
-	// Response: echo('r') + type(0x30) + data bytes
-	respLen := 2 + int(length)
-	resp := make([]byte, 0, respLen)
-	deadline := time.Now().Add(1 * time.Second)
-
-	for len(resp) < respLen && time.Now().Before(deadline) {
-		buf := make([]byte, respLen-len(resp))
+	for len(resp) < maxBytes && time.Now().Before(deadline) {
+		buf := make([]byte, maxBytes-len(resp))
 		n, err := s.port.Read(buf)
-		if err != nil && err != io.EOF {
-			return nil, fmt.Errorf("speeduino: read failed: %w", err)
+		if err != nil && n == 0 {
+			if len(resp) > 0 {
+				return resp, nil // return what we have
+			}
+			return nil, fmt.Errorf("read failed: %w", err)
 		}
 		if n > 0 {
 			resp = append(resp, buf[:n]...)
 		}
 	}
 
-	if len(resp) < respLen {
-		return nil, fmt.Errorf("speeduino: incomplete response: got %d bytes, want %d", len(resp), respLen)
+	if len(resp) == 0 {
+		return nil, fmt.Errorf("no response within %v", timeout)
 	}
-
-	if resp[0] != 'r' {
-		return nil, fmt.Errorf("speeduino: unexpected echo: got 0x%02X, want 0x72", resp[0])
-	}
-	if resp[1] != rCommandType {
-		return nil, fmt.Errorf("speeduino: unexpected r-type: got 0x%02X, want 0x%02X", resp[1], rCommandType)
-	}
-
-	data := resp[2:]
-	return s.parseSecondaryData(data), nil
-}
-
-// ============================================================================
-// Primary msEnvelope Protocol — CRC32 framed
-// ============================================================================
-
-// requestPrimary sends an msEnvelope-framed 'r' command and reads the enveloped response.
-func (s *Speeduino) requestPrimary() (*DataFrame, error) {
-	s.port.ResetInputBuffer()
-
-	envelope := s.buildMsEnvelope(0, primaryOCHBlockSize)
-
-	if _, err := s.port.Write(envelope); err != nil {
-		return nil, fmt.Errorf("speeduino: write failed: %w", err)
-	}
-
-	time.Sleep(postWriteDelay)
-
-	// Response is msEnvelope-framed: <size_hi><size_lo><payload><crc32>
-	payload, err := s.readMsEnvelopeResponse()
-	if err != nil {
-		return nil, fmt.Errorf("speeduino: %w", err)
-	}
-
-	// The payload may include a status byte prefix before the OCH data.
-	// If payload is exactly primaryOCHBlockSize, it's pure data.
-	// If payload is primaryOCHBlockSize+1, first byte is status.
-	var data []byte
-	switch {
-	case len(payload) == primaryOCHBlockSize:
-		data = payload
-	case len(payload) == primaryOCHBlockSize+1:
-		// Skip the status byte (first byte)
-		data = payload[1:]
-	case len(payload) > primaryOCHBlockSize:
-		// Take the last primaryOCHBlockSize bytes
-		data = payload[len(payload)-primaryOCHBlockSize:]
-	default:
-		return nil, fmt.Errorf("speeduino: unexpected payload size: %d (want %d)", len(payload), primaryOCHBlockSize)
-	}
-
-	return s.parsePrimaryData(data), nil
+	return resp, nil
 }
 
 // ============================================================================
@@ -847,6 +574,7 @@ func (s *Speeduino) requestPrimary() (*DataFrame, error) {
 // ============================================================================
 
 // parseSecondaryData decodes the secondary serial data layout into a DataFrame.
+// Used by Generic mode ('n' and 'A' commands). Layout per docs/SPEEDUINO_SECONDARY_SERIAL_PROTOCOL.md
 func (s *Speeduino) parseSecondaryData(d []byte) *DataFrame {
 	f := &DataFrame{}
 	n := len(d)
@@ -919,6 +647,7 @@ func (s *Speeduino) parseSecondaryData(d []byte) *DataFrame {
 	f.Baro = u8(40)
 	f.Errors = u8(74)
 
+	// Enhanced data (bytes 75+, from 'n' command)
 	if n > 75 {
 		f.PulseWidth2 = float64(u16le(76)) * 0.1
 		f.PulseWidth3 = float64(u16le(78)) * 0.1
@@ -951,7 +680,8 @@ func (s *Speeduino) parseSecondaryData(d []byte) *DataFrame {
 	return f
 }
 
-// parsePrimaryData decodes the primary msEnvelope 130-byte OCH block into a DataFrame.
+// parsePrimaryData decodes the TunerStudio/primary 130-byte OCH block into a DataFrame.
+// Layout per speeduino.ini [OutputChannels] section.
 func (s *Speeduino) parsePrimaryData(d []byte) *DataFrame {
 	f := &DataFrame{}
 

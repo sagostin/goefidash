@@ -10,6 +10,8 @@ type Provider interface {
 	Connect() error
 	// Close cleanly shuts down the serial connection.
 	Close() error
+	// IsConnected returns whether the provider has an active connection.
+	IsConnected() bool
 	// RequestData sends a data request and returns parsed realtime values.
 	RequestData() (*DataFrame, error)
 }

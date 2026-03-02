@@ -53,14 +53,15 @@ type wsClient struct {
 
 // Frame is the JSON structure sent to all WebSocket clients.
 type Frame struct {
-	ECU        *ecu.DataFrame    `json:"ecu,omitempty"`
-	GPS        *gps.Data         `json:"gps,omitempty"`
-	Config     *DisplayConfig    `json:"config,omitempty"`
-	Drivetrain *DrivetrainConfig `json:"drivetrain,omitempty"`
-	Vehicle    *VehicleConfig    `json:"vehicle,omitempty"`
-	Odo        *OdoData          `json:"odo,omitempty"`
-	Speed      *SpeedData        `json:"speed,omitempty"` // Calculated best-available speed
-	Stamp      int64             `json:"stamp"`           // Unix ms
+	ECU          *ecu.DataFrame    `json:"ecu,omitempty"`
+	GPS          *gps.Data         `json:"gps,omitempty"`
+	Config       *DisplayConfig    `json:"config,omitempty"`
+	Drivetrain   *DrivetrainConfig `json:"drivetrain,omitempty"`
+	Vehicle      *VehicleConfig    `json:"vehicle,omitempty"`
+	Odo          *OdoData          `json:"odo,omitempty"`
+	Speed        *SpeedData        `json:"speed,omitempty"` // Calculated best-available speed
+	ECUConnected *bool             `json:"ecuConnected,omitempty"`
+	Stamp        int64             `json:"stamp"` // Unix ms
 }
 
 // OdoData is the odometer info sent to clients.
@@ -306,22 +307,63 @@ func (s *Server) pollLoop(ctx context.Context) {
 		}
 	}()
 
-	// ECU polling goroutine — runs independently
+	// ECU polling goroutine — runs independently with reconnection
 	go func() {
-		var lastECUErr time.Time
+		var (
+			lastECUErr     time.Time
+			consecErrors   int
+			reconnectDelay = 2 * time.Second
+			maxReconnDelay = 30 * time.Second
+		)
+		const maxConsecErrors = 10 // reconnect after this many sequential failures
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ecuTicker.C:
-				if s.ecuProv != nil {
-					if data, err := s.ecuProv.RequestData(); err == nil {
-						ecuMu.Lock()
-						lastECU = data
-						ecuMu.Unlock()
-					} else if time.Since(lastECUErr) > 5*time.Second {
-						log.Printf("[ecu] poll error: %v", err)
+				if s.ecuProv == nil {
+					continue
+				}
+
+				// Check if we need to reconnect
+				if !s.ecuProv.IsConnected() {
+					if time.Since(lastECUErr) > reconnectDelay {
+						log.Printf("[ecu] attempting reconnection...")
+						if err := s.ecuProv.Connect(); err != nil {
+							log.Printf("[ecu] reconnect failed: %v (retry in %v)", err, reconnectDelay)
+							lastECUErr = time.Now()
+							reconnectDelay *= 2
+							if reconnectDelay > maxReconnDelay {
+								reconnectDelay = maxReconnDelay
+							}
+						} else {
+							log.Printf("[ecu] reconnected successfully")
+							consecErrors = 0
+							reconnectDelay = 2 * time.Second
+						}
+					}
+					continue
+				}
+
+				data, err := s.ecuProv.RequestData()
+				if err == nil {
+					ecuMu.Lock()
+					lastECU = data
+					ecuMu.Unlock()
+					consecErrors = 0
+				} else {
+					consecErrors++
+					if time.Since(lastECUErr) > 5*time.Second {
+						log.Printf("[ecu] poll error (%d consecutive): %v", consecErrors, err)
 						lastECUErr = time.Now()
+					}
+					// After too many consecutive errors, trigger reconnection
+					if consecErrors >= maxConsecErrors {
+						log.Printf("[ecu] %d consecutive errors, closing connection for reconnect", consecErrors)
+						s.ecuProv.Close()
+						consecErrors = 0
+						reconnectDelay = 2 * time.Second
 					}
 				}
 			}
@@ -353,12 +395,20 @@ func (s *Server) pollLoop(ctx context.Context) {
 
 			// Only broadcast if we have at least something
 			if ecuSnap != nil || gpsSnap != nil {
+				// ECU connection status
+				var ecuConn *bool
+				if s.ecuProv != nil {
+					c := s.ecuProv.IsConnected()
+					ecuConn = &c
+				}
+
 				frame := Frame{
-					ECU:   ecuSnap,
-					GPS:   gpsSnap,
-					Odo:   odo,
-					Speed: speed,
-					Stamp: time.Now().UnixMilli(),
+					ECU:          ecuSnap,
+					GPS:          gpsSnap,
+					Odo:          odo,
+					Speed:        speed,
+					ECUConnected: ecuConn,
+					Stamp:        time.Now().UnixMilli(),
 				}
 				s.broadcast(frame)
 

@@ -19,9 +19,10 @@ func NewDemoProvider() *DemoProvider {
 	return &DemoProvider{stoich: 14.7}
 }
 
-func (d *DemoProvider) Name() string   { return "Demo (Simulated)" }
-func (d *DemoProvider) Connect() error { d.running = true; return nil }
-func (d *DemoProvider) Close() error   { d.running = false; return nil }
+func (d *DemoProvider) Name() string      { return "Demo (Simulated)" }
+func (d *DemoProvider) Connect() error    { d.running = true; return nil }
+func (d *DemoProvider) Close() error      { d.running = false; return nil }
+func (d *DemoProvider) IsConnected() bool { return d.running }
 
 func (d *DemoProvider) RequestData() (*DataFrame, error) {
 	d.mu.Lock()

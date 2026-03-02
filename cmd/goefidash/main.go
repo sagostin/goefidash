@@ -56,6 +56,7 @@ func main() {
 			BaudRate: cfg.ECU.BaudRate,
 			CanID:    byte(cfg.ECU.CanID),
 			Stoich:   cfg.ECU.Stoich,
+			Protocol: cfg.ECU.Protocol,
 		})
 	default:
 		ecuProv = ecu.NewDemoProvider()

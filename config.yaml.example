@@ -13,6 +13,9 @@ ecu:
   can_id: 0
   stoich: 14.7             # Stoichiometric ratio (14.7 gasoline, 9.8 E85)
   poll_hz: 20              # Polling rate in Hz
+  protocol: generic        # "generic" (secondary serial n/A commands) or
+                           # "tunerstudio" (msEnvelope CRC32 framed, for
+                           # secondarySerialProtocol=Tuner Studio or USB port)
 
 # ---- GPS ----
 gps:

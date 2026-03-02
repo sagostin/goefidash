@@ -46,7 +46,7 @@ type ECUConfig struct {
 	CanID    int     `yaml:"can_id" json:"canId"`
 	Stoich   float64 `yaml:"stoich" json:"stoich"`
 	PollHz   int     `yaml:"poll_hz" json:"pollHz"`    // ECU polling rate
-	Protocol string  `yaml:"protocol" json:"protocol"` // "auto", "secondary", "msenvelope" (default: auto)
+	Protocol string  `yaml:"protocol" json:"protocol"` // "generic" or "tunerstudio"
 }
 
 type GPSConfig struct {
@@ -124,6 +124,7 @@ func DefaultConfig() *Config {
 			CanID:    0,
 			Stoich:   14.7,
 			PollHz:   20,
+			Protocol: "generic",
 		},
 		GPS: GPSConfig{
 			Type:     "demo",
