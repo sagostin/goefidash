@@ -2,8 +2,8 @@
 
 ## Phase 1 — Core (✅ Complete)
 
-- [x] Speeduino ECU driver (TunerStudio `r` command, msEnvelope CRC32)
-- [x] Protocol auto-detection (msEnvelope → secondary serial fallback)
+- [x] Speeduino ECU driver (secondary serial protocol, plain `A`/`n`/`r` commands)
+- [x] Protocol auto-detection (secondary serial variant detection)
 - [x] NMEA GPS driver (10 Hz, u-blox compatible)
 - [x] WebSocket real-time dashboard
 - [x] Persistent odometer (haversine GPS distance) with trip reset

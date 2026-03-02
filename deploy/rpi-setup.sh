@@ -65,8 +65,8 @@ UDEV_FILE="$UDEV_DIR/99-speeduino.rules"
 # Detect boot config paths (Pi OS Bookworm moves them under /boot/firmware/)
 BOOT_CONFIG="/boot/config.txt"
 BOOT_CMDLINE="/boot/cmdline.txt"
-[[ -f "/boot/firmware/config.txt" ]]  && BOOT_CONFIG="/boot/firmware/config.txt"
-[[ -f "/boot/firmware/cmdline.txt" ]] && BOOT_CMDLINE="/boot/firmware/cmdline.txt"
+[[ -f "/boot/firmware/config.txt" ]]  && BOOT_CONFIG="/boot/firmware/config.txt"  || true
+[[ -f "/boot/firmware/cmdline.txt" ]] && BOOT_CMDLINE="/boot/firmware/cmdline.txt" || true
 
 # ── Banner ──────────────────────────────────────────────────────
 clear 2>/dev/null || true
@@ -83,7 +83,6 @@ echo ""
 # Track what we configure for the summary
 ECU_PORT=""
 ECU_BAUD="115200"
-ECU_PROTOCOL="auto"
 GPS_TYPE="disabled"
 GPS_PORT=""
 GPS_BAUD="9600"
@@ -113,7 +112,7 @@ elif [[ -f "speeduino-dash" ]]; then
 elif [[ -f "go.mod" ]]; then
     warn "No pre-built binary found. Building from source..."
     GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 \
-        go build -ldflags "-s -w" -o speeduino-dash ./cmd/speeduino-dash/
+        go build -ldflags "-s -w" -o goefidash ./cmd/goefidash/
     BINARY="./speeduino-dash"
     info "Built successfully"
 else
@@ -194,10 +193,10 @@ case "${ECU_CHOICE:-1}" in
         USB_DEVICES=()
         if ls /dev/ttyUSB* 2>/dev/null 1>&2; then
             for dev in /dev/ttyUSB*; do
-                VENDOR=$(udevadm info -a -n "$dev" 2>/dev/null | grep -m1 'ATTRS{idVendor}' | sed 's/.*=="\(.*\)"/\1/')
-                PRODUCT=$(udevadm info -a -n "$dev" 2>/dev/null | grep -m1 'ATTRS{idProduct}' | sed 's/.*=="\(.*\)"/\1/')
-                SERIAL_NUM=$(udevadm info -a -n "$dev" 2>/dev/null | grep -m1 'ATTRS{serial}' | sed 's/.*=="\(.*\)"/\1/')
-                MFGR=$(udevadm info -a -n "$dev" 2>/dev/null | grep -m1 'ATTRS{manufacturer}' | sed 's/.*=="\(.*\)"/\1/')
+                VENDOR=$(udevadm info -a -n "$dev" 2>/dev/null | grep -m1 'ATTRS{idVendor}' | sed 's/.*=="\(.*\)"/\1/' || true)
+                PRODUCT=$(udevadm info -a -n "$dev" 2>/dev/null | grep -m1 'ATTRS{idProduct}' | sed 's/.*=="\(.*\)"/\1/' || true)
+                SERIAL_NUM=$(udevadm info -a -n "$dev" 2>/dev/null | grep -m1 'ATTRS{serial}' | sed 's/.*=="\(.*\)"/\1/' || true)
+                MFGR=$(udevadm info -a -n "$dev" 2>/dev/null | grep -m1 'ATTRS{manufacturer}' | sed 's/.*=="\(.*\)"/\1/' || true)
                 echo -e "    ${BOLD}${dev}${NC}  —  ${MFGR:-unknown} (${VENDOR:-????}:${PRODUCT:-????}) serial=${SERIAL_NUM:-n/a}"
                 USB_DEVICES+=("$dev")
             done
@@ -215,9 +214,9 @@ case "${ECU_CHOICE:-1}" in
         fi
 
         # Get vendor/product IDs for the selected device
-        VENDOR=$(udevadm info -a -n "$ECU_PORT" 2>/dev/null | grep -m1 'ATTRS{idVendor}' | sed 's/.*=="\(.*\)"/\1/')
-        PRODUCT=$(udevadm info -a -n "$ECU_PORT" 2>/dev/null | grep -m1 'ATTRS{idProduct}' | sed 's/.*=="\(.*\)"/\1/')
-        SERIAL_NUM=$(udevadm info -a -n "$ECU_PORT" 2>/dev/null | grep -m1 'ATTRS{serial}' | sed 's/.*=="\(.*\)"/\1/')
+        VENDOR=$(udevadm info -a -n "$ECU_PORT" 2>/dev/null | grep -m1 'ATTRS{idVendor}' | sed 's/.*=="\(.*\)"/\1/' || true)
+        PRODUCT=$(udevadm info -a -n "$ECU_PORT" 2>/dev/null | grep -m1 'ATTRS{idProduct}' | sed 's/.*=="\(.*\)"/\1/' || true)
+        SERIAL_NUM=$(udevadm info -a -n "$ECU_PORT" 2>/dev/null | grep -m1 'ATTRS{serial}' | sed 's/.*=="\(.*\)"/\1/' || true)
 
         if [[ -n "$VENDOR" && -n "$PRODUCT" ]]; then
             info "Detected: vendor=$VENDOR product=$PRODUCT serial=${SERIAL_NUM:-n/a}"
@@ -248,20 +247,12 @@ case "${ECU_CHOICE:-1}" in
         ;;
 esac
 
-# ECU baud & protocol
+# ECU baud rate
 echo ""
 prompt_default "ECU baud rate" "115200"
 ECU_BAUD="$REPLY"
 
-echo ""
-echo -e "  ECU protocol mode:"
-echo -e "    ${BOLD}auto${NC}      — auto-detect (recommended)"
-echo -e "    ${BOLD}secondary${NC} — force secondary serial (plain commands)"
-echo -e "    ${BOLD}msenvelope${NC} — force TunerStudio protocol"
-prompt_default "Protocol" "auto"
-ECU_PROTOCOL="$REPLY"
-
-info "ECU: $ECU_PORT @ ${ECU_BAUD} baud (protocol: $ECU_PROTOCOL)"
+info "ECU: $ECU_PORT @ ${ECU_BAUD} baud"
 
 # ================================================================
 # STEP 3 — GPS
@@ -285,16 +276,16 @@ case "${GPS_CHOICE:-2}" in
         echo ""
 
         USB_DEVICES=()
-        GPS_SCAN_DEVS=()
-        for d in /dev/ttyUSB* /dev/ttyACM*; do [[ -e "$d" ]] && GPS_SCAN_DEVS+=("$d"); done
-        if [[ ${#GPS_SCAN_DEVS[@]} -gt 0 ]]; then
-            for dev in "${GPS_SCAN_DEVS[@]}"; do
-                VENDOR=$(udevadm info -a -n "$dev" 2>/dev/null | grep -m1 'ATTRS{idVendor}' | sed 's/.*=="\(.*\)"/\1/')
-                PRODUCT=$(udevadm info -a -n "$dev" 2>/dev/null | grep -m1 'ATTRS{idProduct}' | sed 's/.*=="\(.*\)"/\1/')
-                MFGR=$(udevadm info -a -n "$dev" 2>/dev/null | grep -m1 'ATTRS{manufacturer}' | sed 's/.*=="\(.*\)"/\1/')
+        # Safely enumerate — ls returns non-zero when nothing matches
+        GPS_SCAN_LIST=$(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null || true)
+        if [[ -n "$GPS_SCAN_LIST" ]]; then
+            while IFS= read -r dev; do
+                VENDOR=$(udevadm info -a -n "$dev" 2>/dev/null | grep -m1 'ATTRS{idVendor}' | sed 's/.*=="\(.*\)"/\1/' || true)
+                PRODUCT=$(udevadm info -a -n "$dev" 2>/dev/null | grep -m1 'ATTRS{idProduct}' | sed 's/.*=="\(.*\)"/\1/' || true)
+                MFGR=$(udevadm info -a -n "$dev" 2>/dev/null | grep -m1 'ATTRS{manufacturer}' | sed 's/.*=="\(.*\)"/\1/' || true)
                 echo -e "    ${BOLD}${dev}${NC}  —  ${MFGR:-unknown} (${VENDOR:-????}:${PRODUCT:-????})"
                 USB_DEVICES+=("$dev")
-            done
+            done <<< "$GPS_SCAN_LIST"
         fi
 
         if [[ ${#USB_DEVICES[@]} -eq 0 ]]; then
@@ -305,15 +296,17 @@ case "${GPS_CHOICE:-2}" in
             echo ""
             # Default to second device if available (first is likely ECU)
             DEFAULT_GPS="${USB_DEVICES[0]}"
-            [[ ${#USB_DEVICES[@]} -gt 1 ]] && DEFAULT_GPS="${USB_DEVICES[1]}"
+            if [[ ${#USB_DEVICES[@]} -gt 1 ]]; then
+                DEFAULT_GPS="${USB_DEVICES[1]}"
+            fi
             prompt_default "Select GPS device" "$DEFAULT_GPS"
             GPS_PORT="$REPLY"
         fi
 
         # Auto-detect vendor/product for udev rule
-        VENDOR=$(udevadm info -a -n "$GPS_PORT" 2>/dev/null | grep -m1 'ATTRS{idVendor}' | sed 's/.*=="\(.*\)"/\1/')
-        PRODUCT=$(udevadm info -a -n "$GPS_PORT" 2>/dev/null | grep -m1 'ATTRS{idProduct}' | sed 's/.*=="\(.*\)"/\1/')
-        SERIAL_NUM=$(udevadm info -a -n "$GPS_PORT" 2>/dev/null | grep -m1 'ATTRS{serial}' | sed 's/.*=="\(.*\)"/\1/')
+        VENDOR=$(udevadm info -a -n "$GPS_PORT" 2>/dev/null | grep -m1 'ATTRS{idVendor}' | sed 's/.*=="\(.*\)"/\1/' || true)
+        PRODUCT=$(udevadm info -a -n "$GPS_PORT" 2>/dev/null | grep -m1 'ATTRS{idProduct}' | sed 's/.*=="\(.*\)"/\1/' || true)
+        SERIAL_NUM=$(udevadm info -a -n "$GPS_PORT" 2>/dev/null | grep -m1 'ATTRS{serial}' | sed 's/.*=="\(.*\)"/\1/' || true)
 
         if [[ -n "$VENDOR" && -n "$PRODUCT" ]]; then
             info "Detected GPS: vendor=$VENDOR product=$PRODUCT"
@@ -438,7 +431,6 @@ ecu:
   can_id: 0
   stoich: 14.7
   poll_hz: 20
-  protocol: ${ECU_PROTOCOL}
 ${GPS_YAML}
 
 display:
@@ -505,7 +497,7 @@ chown "$DASH_USER:$DASH_GROUP" "$LOG_DIR"
 info "Log directory: $LOG_DIR"
 
 if [[ -f "$SCRIPT_DIR/logrotate-speeduino-dash" ]]; then
-    cp "$SCRIPT_DIR/logrotate-speeduino-dash" /etc/logrotate.d/speeduino-dash
+    cp "$SCRIPT_DIR/logrotate-speeduino-dash" /etc/logrotate.d/goefidash
     info "Log rotation installed"
 fi
 
@@ -518,7 +510,7 @@ sed "s/User=pi/User=$DASH_USER/;s/Group=pi/Group=$DASH_GROUP/" \
     "$SCRIPT_DIR/speeduino-dash.service" > "$SYSTEMD_DIR/speeduino-dash.service"
 
 systemctl daemon-reload
-systemctl enable speeduino-dash
+systemctl enable goefidash
 info "Service installed and enabled"
 
 # ================================================================
@@ -535,14 +527,68 @@ echo ""
 if confirm "Enable kiosk mode?"; then
     SETUP_KIOSK=true
 
-    # Install kiosk dependencies
-    info "Installing kiosk dependencies..."
-    apt-get install -y --no-install-recommends unclutter chromium-browser 2>/dev/null || \
-        apt-get install -y --no-install-recommends unclutter chromium 2>/dev/null || true
+    # Install minimal X11 + Chromium (no desktop environment needed)
+    info "Installing kiosk packages (this may take a few minutes)..."
+    apt-get update -qq 2>/dev/null || true
+    apt-get install -y --no-install-recommends \
+        xserver-xorg-core \
+        xserver-xorg-input-libinput \
+        xinit \
+        x11-xserver-utils \
+        unclutter \
+        2>/dev/null || true
+
+    apt-get install -y --no-install-recommends chromium-browser 2>/dev/null || \
+        apt-get install -y --no-install-recommends chromium 2>/dev/null || true
+
+    # Verify Chromium installed
+    CHROMIUM=""
+    for bin in chromium-browser chromium; do
+        if command -v "$bin" &>/dev/null; then
+            CHROMIUM="$bin"
+            break
+        fi
+    done
+    if [[ -n "$CHROMIUM" ]]; then
+        info "Chromium installed: $CHROMIUM"
+    else
+        warn "Could not install Chromium — kiosk browser may not work"
+    fi
 
     # Update config to enable kiosk
     if $WRITE_CONFIG; then
         sed -i 's/kiosk: false/kiosk: true/' "$CONFIG_FILE"
+    fi
+
+    # Install kiosk launcher script
+    KIOSK_SCRIPT="/usr/local/bin/speeduino-kiosk.sh"
+    cp "$SCRIPT_DIR/kiosk.sh" "$KIOSK_SCRIPT"
+    chmod +x "$KIOSK_SCRIPT"
+    info "Kiosk launcher installed to $KIOSK_SCRIPT"
+
+    # Configure auto-start via .bash_profile (tty1 only, no X running)
+    BASH_PROFILE="/home/$DASH_USER/.bash_profile"
+    KIOSK_MARKER="# speeduino-kiosk-autostart"
+    if ! grep -q "$KIOSK_MARKER" "$BASH_PROFILE" 2>/dev/null; then
+        cat >> "$BASH_PROFILE" <<KIOSKEOF
+
+$KIOSK_MARKER
+if [[ -z "\$DISPLAY" && "\$(tty)" == "/dev/tty1" ]]; then
+    exec xinit $KIOSK_SCRIPT -- :0 vt1 2>/dev/null
+fi
+KIOSKEOF
+        chown "$DASH_USER:$DASH_GROUP" "$BASH_PROFILE"
+        info "Kiosk auto-start added to .bash_profile"
+    else
+        info "Kiosk auto-start already in .bash_profile"
+    fi
+
+    # Allow user to start X without root
+    if [[ -f /etc/X11/Xwrapper.config ]]; then
+        sed -i 's/allowed_users=console/allowed_users=anybody/' /etc/X11/Xwrapper.config 2>/dev/null || true
+    else
+        mkdir -p /etc/X11
+        echo "allowed_users=anybody" > /etc/X11/Xwrapper.config
     fi
 
     # ── Plymouth boot splash ──
@@ -552,9 +598,11 @@ if confirm "Enable kiosk mode?"; then
         mkdir -p "$THEME_DIR"
         cp "$SCRIPT_DIR/splash.png" "$THEME_DIR/"
         cp "$SCRIPT_DIR/plymouth/speeduino-dash.plymouth" "$THEME_DIR/"
-        cp "$SCRIPT_DIR/plymouth/speeduino-dash.script" "$THEME_DIR/"
+        [[ -f "$SCRIPT_DIR/plymouth/speeduino-dash.script" ]] && \
+            cp "$SCRIPT_DIR/plymouth/speeduino-dash.script" "$THEME_DIR/" || true
+        cp "$SCRIPT_DIR/plymouth/"*.png "$THEME_DIR/" 2>/dev/null || true
 
-        plymouth-set-default-theme -R speeduino-dash 2>/dev/null || \
+        plymouth-set-default-theme -R goefidash 2>/dev/null || \
             update-alternatives --install /usr/share/plymouth/themes/default.plymouth \
                 default.plymouth "$THEME_DIR/speeduino-dash.plymouth" 100 2>/dev/null || true
         update-initramfs -u 2>/dev/null || true
@@ -570,7 +618,6 @@ if confirm "Enable kiosk mode?"; then
                 sed -i "s/$/ $flag/" "$BOOT_CMDLINE"
             fi
         done
-        # Remove console=tty1 verbose output
         sed -i 's/console=tty1//g' "$BOOT_CMDLINE"
     fi
 
@@ -594,33 +641,15 @@ EOF
     systemctl daemon-reload
     info "Auto-login enabled for $DASH_USER on tty1"
 
-    # ── Kiosk Chromium service (user-level systemd) ──
-    USER_SYSTEMD_DIR="/home/$DASH_USER/.config/systemd/user"
-    sudo -u "$DASH_USER" mkdir -p "$USER_SYSTEMD_DIR"
+    # Remove old user-level kiosk service if present (superseded by xinit)
+    OLD_SERVICE="/home/$DASH_USER/.config/systemd/user/speeduino-kiosk.service"
+    if [[ -f "$OLD_SERVICE" ]]; then
+        sudo -u "$DASH_USER" systemctl --user disable speeduino-kiosk.service 2>/dev/null || true
+        rm -f "$OLD_SERVICE"
+        info "Removed old kiosk service (replaced by xinit)"
+    fi
 
-    cat > "$USER_SYSTEMD_DIR/speeduino-kiosk.service" <<EOF
-[Unit]
-Description=Speeduino Dashboard Kiosk Browser
-After=graphical-session.target
-Wants=speeduino-dash.service
-
-[Service]
-Type=simple
-Environment=DISPLAY=:0
-ExecStartPre=/bin/bash -c 'for i in \$(seq 1 30); do curl -s -o /dev/null http://localhost:8080 && break; sleep 1; done'
-ExecStart=/usr/bin/chromium-browser --kiosk --noerrdialogs --disable-infobars --disable-session-crashed-bubble --disable-translate --no-first-run --start-fullscreen --incognito --disable-pinch --overscroll-history-navigation=0 http://localhost:8080
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=graphical-session.target
-EOF
-
-    chown -R "$DASH_USER:$DASH_GROUP" "/home/$DASH_USER/.config/systemd"
-    loginctl enable-linger "$DASH_USER" 2>/dev/null || true
-    sudo -u "$DASH_USER" systemctl --user daemon-reload 2>/dev/null || true
-    sudo -u "$DASH_USER" systemctl --user enable speeduino-kiosk.service 2>/dev/null || true
-    info "Kiosk browser service installed"
+    info "Kiosk mode configured (reboot to activate)"
 else
     info "Kiosk mode skipped"
 fi
@@ -636,7 +665,7 @@ echo -e "  ${BOLD}Binary:${NC}      $INSTALL_DIR/speeduino-dash"
 echo -e "  ${BOLD}Config:${NC}      $CONFIG_FILE"
 echo -e "  ${BOLD}Log dir:${NC}     $LOG_DIR"
 echo ""
-echo -e "  ${BOLD}ECU:${NC}         $ECU_PORT @ ${ECU_BAUD} baud (${ECU_PROTOCOL})"
+echo -e "  ${BOLD}ECU:${NC}         $ECU_PORT @ ${ECU_BAUD} baud"
 if [[ "$GPS_TYPE" == "nmea" ]]; then
 echo -e "  ${BOLD}GPS:${NC}         $GPS_PORT @ ${GPS_BAUD} baud"
 else
@@ -655,7 +684,7 @@ echo ""
 echo -e "  ${CYAN}── Next Steps ──${NC}"
 echo ""
 if confirm "Start the service now?"; then
-    systemctl start speeduino-dash
+    systemctl start goefidash
     info "Service started!"
     echo ""
     echo -e "  Dashboard available at: ${BOLD}http://localhost:8080${NC}"
@@ -670,7 +699,8 @@ echo -e "    sudo systemctl status speeduino-dash   # Check service status"
 echo -e "    sudo journalctl -u speeduino-dash -f   # Follow logs"
 echo -e "    sudo nano $CONFIG_FILE         # Edit config"
 if $SETUP_KIOSK; then
-echo -e "    systemctl --user status speeduino-kiosk # Kiosk status"
+echo -e "    Ctrl+Alt+F2                             # Switch to shell"
+echo -e "    sudo systemctl restart getty@tty1       # Restart kiosk"
 echo ""
 echo -e "  ${YELLOW}Reboot recommended to apply UART/boot changes.${NC}"
 fi

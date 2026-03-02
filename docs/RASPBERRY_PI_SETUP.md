@@ -73,7 +73,7 @@ Complete guide to setting up Speeduino Dash on a Raspberry Pi — from bare SD c
 2. Find the Pi on your network: `ping speeduino-dash.local`
 3. SSH in:
    ```bash
-   ssh dash@speeduino-dash.local
+   ssh dash@goefidash.local
    ```
 
 4. Update the system:
@@ -95,13 +95,13 @@ Transfer the pre-built binary from your dev machine:
 
 ```bash
 # On your dev machine — cross-compile
-cd speeduino-dash
+cd goefidash
 make pi
 
 # Copy to the Pi
-scp speeduino-dash dash@speeduino-dash.local:~/
-scp -r deploy/ dash@speeduino-dash.local:~/deploy/
-scp config.yaml.example dash@speeduino-dash.local:~/
+scp goefidash dash@goefidash.local:~/
+scp -r deploy/ dash@goefidash.local:~/deploy/
+scp config.yaml.example dash@goefidash.local:~/
 ```
 
 Then on the Pi:
@@ -110,7 +110,7 @@ Then on the Pi:
 # Move files into place
 cd ~
 mkdir -p deploy
-cp speeduino-dash ./
+cp goefidash ./
 cp config.yaml.example ./
 
 # Run the installer
@@ -202,13 +202,13 @@ ls -la /dev/ttySpeeduino /dev/ttyGPS   # Verify symlinks exist
 
 Edit config if needed:
 ```bash
-sudo nano /etc/speeduino-dash/config.yaml
+sudo nano /etc/goefidash/config.yaml
 ```
 
 Start the service:
 ```bash
-sudo systemctl start speeduino-dash
-sudo systemctl status speeduino-dash    # Verify it's running
+sudo systemctl start goefidash
+sudo systemctl status goefidash    # Verify it's running
 ```
 
 Check the dashboard at `http://speeduino-dash.local:8080`
@@ -236,7 +236,7 @@ This gives you:
 
 ### Dashboard doesn't start
 ```bash
-sudo journalctl -u speeduino-dash -f     # Watch live logs
+sudo journalctl -u goefidash -f     # Watch live logs
 ```
 
 ### Serial port not found

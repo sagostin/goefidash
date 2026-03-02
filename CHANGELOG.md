@@ -9,8 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ## [Unreleased]
 
 ### Added
-- **Speeduino ECU driver** — full 130-byte OutputChannels via TunerStudio `r` command with msEnvelope CRC32 framing
-- **Protocol auto-detection** — automatically detects msEnvelope (primary serial) vs. secondary serial plain commands
+- **Speeduino ECU driver** — full OutputChannels via secondary serial protocol (plain `A`/`n`/`r` commands)
+- **Protocol auto-detection** — automatically detects the secondary serial protocol variant
 - **NMEA GPS driver** — 10 Hz NMEA 0183 parser, tested with u-blox NEO-M8N
 - **GPS-only mode** — dashboard displays speed and odometer even without an ECU connected
 - **Unified speed source** — prioritizes ECU VSS, falls back to GPS speed

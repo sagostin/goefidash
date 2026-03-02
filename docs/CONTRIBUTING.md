@@ -18,7 +18,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
 ```bash
 # Clone the repo
 git clone https://github.com/shaunagostinho/speeduino-dash.git
-cd speeduino-dash
+cd goefidash
 
 # Build and run in demo mode
 make run
@@ -48,7 +48,7 @@ cmd/speeduino-dash/         Entry point, CLI flags, static file embedding
 internal/
   ecu/                      ECU abstraction layer
     provider.go             Provider interface + DataFrame struct
-    speeduino.go            Speeduino implementation (msEnvelope + secondary serial)
+    speeduino.go            Speeduino implementation (secondary serial protocol)
     demo.go                 Simulated ECU for development
   gps/                      GPS abstraction layer
     provider.go             Provider interface + Data struct

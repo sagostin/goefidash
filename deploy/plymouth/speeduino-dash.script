@@ -1,35 +1,76 @@
 // Speeduino Dash — Plymouth boot splash script
-// Displays splash.png centered on a dark background with a pulsing effect
+// Displays gauge icon centered with animated progress bar below
 
-bg = Image("splash.png");
-screen_w = Window.GetWidth();
-screen_h = Window.GetHeight();
-bg_w = bg.GetWidth();
-bg_h = bg.GetHeight();
-
-// Scale to fit screen while maintaining aspect ratio
-scale_x = screen_w / bg_w;
-scale_y = screen_h / bg_h;
-scale = Math.Min(scale_x, scale_y);
-scaled_bg = bg.Scale(bg_w * scale, bg_h * scale);
-
-sprite = Sprite(scaled_bg);
-sprite.SetX(screen_w / 2 - scaled_bg.GetWidth() / 2);
-sprite.SetY(screen_h / 2 - scaled_bg.GetHeight() / 2);
-sprite.SetZ(1);
-
-// Dark background fill
-Window.SetBackgroundTopColor(0.04, 0.02, 0.07);     // #0a0612
+// ── Background ──
+Window.SetBackgroundTopColor(0.04, 0.02, 0.07);
 Window.SetBackgroundBottomColor(0.04, 0.02, 0.07);
 
-// Hide password dialog / messages during boot
+// ── Splash image (gauge icon) ──
+logo = Image("splash.png");
+screen_w = Window.GetWidth();
+screen_h = Window.GetHeight();
+
+// Scale logo to ~40% of screen height, maintain aspect ratio
+target_h = screen_h * 0.4;
+scale = target_h / logo.GetHeight();
+scaled_logo = logo.Scale(logo.GetWidth() * scale, logo.GetHeight() * scale);
+
+logo_sprite = Sprite(scaled_logo);
+logo_sprite.SetX(screen_w / 2 - scaled_logo.GetWidth() / 2);
+logo_sprite.SetY(screen_h / 2 - scaled_logo.GetHeight() / 2 - 30);
+logo_sprite.SetZ(10);
+
+// ── Progress bar ──
+bar_w = 400;
+bar_h = 6;
+bar_x = screen_w / 2 - bar_w / 2;
+bar_y = screen_h / 2 + scaled_logo.GetHeight() / 2 + 20;
+
+// Track (background)
+track_img = Image("progress-track.png");
+track_scaled = track_img.Scale(bar_w, bar_h);
+track_sprite = Sprite(track_scaled);
+track_sprite.SetX(bar_x);
+track_sprite.SetY(bar_y);
+track_sprite.SetZ(10);
+
+// Fill (progress)
+fill_img = Image("progress-fill.png");
+progress = 0;
+
+fill_sprite = Sprite();
+fill_sprite.SetX(bar_x);
+fill_sprite.SetY(bar_y);
+fill_sprite.SetZ(11);
+
+// Update progress bar based on system boot progress
+fun boot_progress_callback(duration, progress_val) {
+    if (progress_val > progress)
+        progress = progress_val;
+
+    // Scale fill image to current progress width
+    fill_w = bar_w * progress;
+    if (fill_w < 1)
+        fill_w = 1;
+    fill_scaled = fill_img.Scale(fill_w, bar_h);
+    fill_sprite.SetImage(fill_scaled);
+    fill_sprite.SetX(bar_x);
+    fill_sprite.SetY(bar_y);
+}
+
+Plymouth.SetBootProgressFunction(boot_progress_callback);
+
+// ── Hide all text/messages ──
 fun message_callback(text) { }
 Plymouth.SetMessageFunction(message_callback);
 
 fun display_password_callback(prompt, bullets) {
-    // No password prompt in kiosk mode
     return "";
 }
 
 fun display_normal_callback() { }
 Plymouth.SetDisplayNormalFunction(display_normal_callback);
+
+fun display_question_callback(prompt, entry) {
+    return "";
+}

@@ -11,17 +11,11 @@ On a Mega 2560, Serial3 can be found on pins 14 and 15 (not broken out to the ID
 
 **Connection parameters:** 115200 baud, 8 data bits, no parity, 1 stop bit.
 
-## Important: Primary vs Secondary Serial Protocol
+## Protocol Details
 
-The **primary serial port** (Serial0/USB) uses the **msEnvelope** protocol with CRC32 framing for TunerStudio communication. This wraps every command in:
+The secondary serial port uses a **plain-byte protocol**. Commands are sent as **plain bytes** with no CRC32 wrapping. Responses are also plain bytes without envelope framing.
 
-```
-<size_hi> <size_lo> <payload...> <crc32 4-bytes big-endian>
-```
-
-The **secondary serial port** (Serial3/Serial2) uses a **simpler, non-enveloped protocol**. Commands are sent as **plain bytes** with **no CRC32 wrapping**. Responses are also plain bytes without envelope framing.
-
-**Our dashboard connects to the secondary serial port and must use the secondary protocol, NOT msEnvelope.**
+**Our dashboard connects to the secondary serial port using this protocol.**
 
 ## Serial Port Functions
 

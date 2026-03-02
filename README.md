@@ -23,7 +23,7 @@ The hardware side uses the excellent [**V8 Creations SDC I/O Hat**](https://www.
 
 ### ECU & Serial
 - **Speeduino ECU support** — reads the full 130-byte OutputChannels via TunerStudio `r` command
-- **Protocol auto-detection** — tries msEnvelope (CRC32 framing) first, falls back to secondary serial plain commands automatically
+- **Protocol auto-detection** — automatically detects the secondary serial protocol variant (plain `n`/`A` commands)
 - **Exponential retry** — serial connections retry with backoff (1s → 60s cap)
 
 ### GPS & Speed
@@ -72,11 +72,11 @@ The hardware side uses the excellent [**V8 Creations SDC I/O Hat**](https://www.
 ```bash
 # Clone and build
 git clone https://github.com/shaunagostinho/speeduino-dash.git
-cd speeduino-dash
-make              # or: go build -o speeduino-dash ./cmd/speeduino-dash/
+cd goefidash
+make              # or: go build -o goefidash ./cmd/goefidash/
 
 # Run in demo mode (simulated ECU + GPS data)
-make run          # or: ./speeduino-dash --demo --listen :8080
+make run          # or: ./goefidash --demo --listen :8080
 
 # Open http://localhost:8080 in your browser
 # Click the ⚙ gear icon to access settings and switch layouts
@@ -166,7 +166,7 @@ cmd/speeduino-dash/         Entry point, embed, CLI flags, retry logic
 internal/
   ecu/
     provider.go             ECU Provider interface + DataFrame (70+ channels)
-    speeduino.go            Speeduino serial driver (msEnvelope + secondary protocol auto-detect)
+    speeduino.go            Speeduino serial driver (secondary serial protocol auto-detect)
     demo.go                 Simulated ECU for testing
   gps/
     provider.go             GPS Provider interface + Data struct
@@ -196,7 +196,6 @@ deploy/
     plymouth/               Plymouth theme files
 docs/
     RASPBERRY_PI_SETUP.md               Complete Pi setup guide (SD card → running dash)
-    TUNERSTUDIO_MSENVELOPE_PROTOCOL.md  msEnvelope CRC32 framing spec
     SPEEDUINO_SECONDARY_SERIAL_PROTOCOL.md  Secondary serial plain-byte protocol spec
     CONTRIBUTING.md                     Contributor guide
 Makefile                    Build, cross-compile, install, test targets
@@ -241,7 +240,6 @@ The `DataFrame` struct exposes **70+ channels** including RPM, MAP, TPS, AFR, te
 | Document | Description |
 |----------|-------------|
 | [Raspberry Pi Setup Guide](docs/RASPBERRY_PI_SETUP.md) | Complete guide from bare SD card to running dashboard |
-| [TunerStudio msEnvelope Protocol](docs/TUNERSTUDIO_MSENVELOPE_PROTOCOL.md) | CRC32 framing specification for primary serial |
 | [Secondary Serial Protocol](docs/SPEEDUINO_SECONDARY_SERIAL_PROTOCOL.md) | Plain-byte protocol for secondary serial port |
 | [Contributing Guide](docs/CONTRIBUTING.md) | Dev setup, project structure, how to contribute |
 | [Roadmap](ROADMAP.md) | Phased feature roadmap |
