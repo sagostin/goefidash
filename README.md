@@ -22,8 +22,8 @@ The hardware side uses the excellent [**V8 Creations SDC I/O Hat**](https://www.
 ## Features
 
 ### ECU & Serial
-- **Speeduino ECU support** — reads the full 130-byte OutputChannels via TunerStudio `r` command
-- **Protocol auto-detection** — automatically detects the secondary serial protocol variant (plain `n`/`A` commands)
+- **Speeduino ECU support** — reads realtime data via the secondary serial protocol (`n`/`A` commands)
+- **Command auto-detection** — tries enhanced `n` command first, falls back to legacy `A` automatically
 - **Exponential retry** — serial connections retry with backoff (1s → 60s cap)
 
 ### GPS & Speed
@@ -166,7 +166,7 @@ cmd/speeduino-dash/         Entry point, embed, CLI flags, retry logic
 internal/
   ecu/
     provider.go             ECU Provider interface + DataFrame (70+ channels)
-    speeduino.go            Speeduino serial driver (secondary serial protocol auto-detect)
+    speeduino.go            Speeduino serial driver (secondary serial protocol)
     demo.go                 Simulated ECU for testing
   gps/
     provider.go             GPS Provider interface + Data struct
