@@ -40,13 +40,13 @@ type Config struct {
 }
 
 type ECUConfig struct {
-	Type     string  `yaml:"type" json:"type"`          // "speeduino" or "demo"
-	PortPath string  `yaml:"port_path" json:"portPath"` // e.g. /dev/ttySpeeduino
-	BaudRate int     `yaml:"baud_rate" json:"baudRate"`
-	CanID    int     `yaml:"can_id" json:"canId"`
-	Stoich   float64 `yaml:"stoich" json:"stoich"`
-	PollHz   int     `yaml:"poll_hz" json:"pollHz"`    // ECU polling rate
-	Protocol string  `yaml:"protocol" json:"protocol"` // "generic" or "tunerstudio"
+	Type        string  `yaml:"type" json:"type"`          // "speeduino" or "demo"
+	PortPath    string  `yaml:"port_path" json:"portPath"` // e.g. /dev/ttySpeeduino
+	BaudRate    int     `yaml:"baud_rate" json:"baudRate"`
+	CanID       int     `yaml:"can_id" json:"canId"`
+	Stoich      float64 `yaml:"stoich" json:"stoich"`
+	PollHz      int     `yaml:"poll_hz" json:"pollHz"`           // ECU polling rate
+	SerialDebug bool    `yaml:"serial_debug" json:"serialDebug"` // Log raw serial bytes
 }
 
 type GPSConfig struct {
@@ -118,13 +118,12 @@ type ServerConfig struct {
 func DefaultConfig() *Config {
 	return &Config{
 		ECU: ECUConfig{
-			Type:     "demo",
+			Type:     "disabled",
 			PortPath: "/dev/ttySpeeduino",
 			BaudRate: 115200,
 			CanID:    0,
 			Stoich:   14.7,
 			PollHz:   20,
-			Protocol: "generic",
 		},
 		GPS: GPSConfig{
 			Type:     "demo",
@@ -153,7 +152,7 @@ func DefaultConfig() *Config {
 				BattHigh:    15.5,
 				KnockWarn:   3,
 			},
-			Layout: "classic",
+			Layout: "race",
 		},
 		Drivetrain: DrivetrainConfig{
 			ShowGear:      true,
@@ -281,8 +280,8 @@ func (c *Config) applyEnvOverrides() {
 	if v := os.Getenv("SPEED_UNIT"); v != "" {
 		c.Display.Units.Speed = v
 	}
-	if v := os.Getenv("ECU_PROTOCOL"); v != "" {
-		c.ECU.Protocol = v
+	if v := os.Getenv("SERIAL_DEBUG"); v != "" {
+		c.ECU.SerialDebug = v == "1" || v == "true" || v == "yes"
 	}
 	// Logging
 	if v := os.Getenv("LOG_ENABLED"); v != "" {

@@ -1,5 +1,5 @@
 # ================================================================
-# Speeduino Dash — Sample Configuration
+# goefidash — Sample Configuration
 # ================================================================
 # Copy this file to /etc/speeduino-dash/config.yaml or place it
 # alongside the binary. Environment variables and .env file
@@ -7,8 +7,7 @@
 
 # ---- ECU Connection ----
 ecu:
-  type: speeduino          # "speeduino" or "demo"
-  protocol: generic_ini    # "generic_fixed", "generic_ini", or "tunerstudio"
+  type: disabled            # "disabled", "speeduino", or "demo"
   port_path: /dev/ttySpeeduino
   baud_rate: 115200
   can_id: 0
@@ -23,7 +22,7 @@ gps:
 
 # ---- Display ----
 display:
-  layout: classic             # "classic", "sweep", "minimal" (future)
+  layout: race               # "race", "classic", "sweep", "minimal"
   units:
     temperature: C          # "C" or "F"
     pressure: psi           # "psi", "kpa", or "bar"

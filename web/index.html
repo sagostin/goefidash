@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Speeduino Dash</title>
+    <title>goefidash</title>
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -246,71 +246,13 @@
              LAYOUT: RACE — F1/GT3 inspired, maximum density
              ============================================================ -->
         <div id="layout-race" class="layout">
-            <!-- Full-width RPM Bar -->
-            <div class="race-rpm-strip">
-                <div class="race-rpm-bar-bg">
-                    <div class="race-rpm-bar-fill" id="raceRpmBar"></div>
-                </div>
-                <div class="race-rpm-numbers">
-                    <span>0</span><span>1</span><span>2</span><span>3</span><span>4</span>
-                    <span>5</span><span>6</span><span>7</span><span>8</span>
-                </div>
-                <span class="race-rpm-value" id="raceRpmValue">0</span>
+            <!-- Giant Centered Speed -->
+            <div class="race-speed-hero">
+                <span class="race-hero-value" id="raceSpeedValue">0</span>
+                <span class="race-hero-unit" id="raceSpeedUnit">km/h</span>
             </div>
 
-            <!-- Central Gear + Speed -->
-            <div class="race-center">
-                <div class="race-speed-col">
-                    <span class="race-speed" id="raceSpeedValue">0</span>
-                    <span class="race-speed-unit" id="raceSpeedUnit">km/h</span>
-                </div>
-                <div class="race-gear-col">
-                    <span class="race-gear" id="raceGearDisplay">N</span>
-                </div>
-                <div class="race-info-col">
-                    <div class="race-info-item">
-                        <span class="race-info-label">~WHP</span>
-                        <span class="race-info-val" id="raceHpValue">0</span>
-                    </div>
-                    <div class="race-info-item">
-                        <span class="race-info-label" id="raceEngineStatus">OFF</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Compact Values Strip -->
-            <div class="race-values">
-                <div class="race-val-cell" id="raceAfrCard">
-                    <span class="race-val-label">AFR</span>
-                    <span class="race-val-num" id="raceAfrValue">--</span>
-                </div>
-                <div class="race-val-cell" id="raceBoostCard">
-                    <span class="race-val-label">BOOST</span>
-                    <span class="race-val-num" id="raceBoostValue">--</span>
-                    <span class="race-val-unit" id="raceBoostUnit">PSI</span>
-                </div>
-                <div class="race-val-cell" id="raceOilCard">
-                    <span class="race-val-label">OIL</span>
-                    <span class="race-val-num" id="raceOilValue">--</span>
-                    <span class="race-val-unit" id="raceOilUnit">PSI</span>
-                </div>
-                <div class="race-val-cell" id="raceCltCard">
-                    <span class="race-val-label">CLT</span>
-                    <span class="race-val-num" id="raceCltValue">--</span>
-                    <span class="race-val-unit" id="raceCltUnit">°C</span>
-                </div>
-                <div class="race-val-cell" id="raceIatCard">
-                    <span class="race-val-label">IAT</span>
-                    <span class="race-val-num" id="raceIatValue">--</span>
-                    <span class="race-val-unit" id="raceIatUnit">°C</span>
-                </div>
-                <div class="race-val-cell" id="raceKnockCard">
-                    <span class="race-val-label">KNOCK</span>
-                    <span class="race-val-num" id="raceKnockValue">0°</span>
-                </div>
-            </div>
-
-            <!-- Bottom status -->
+            <!-- Bottom Bar: ODO + Status -->
             <div class="race-bottom-bar">
                 <div class="race-odo">
                     <span class="race-odo-label">ODO</span>
@@ -319,11 +261,11 @@
                     <span class="race-odo-sep">|</span>
                     <span class="race-odo-label">TRIP</span>
                     <span class="race-odo-val" id="raceOdoTrip">0.0</span>
+                    <span class="race-odo-unit" id="raceOdoTripUnit">km</span>
+                    <button class="odo-reset" id="btnResetTripRace" title="Reset trip">↺</button>
                 </div>
                 <div class="race-status-dots">
-                    <span class="status-dot" id="raceStatusSync" title="ECU">●</span>
                     <span class="status-dot" id="raceStatusGPS" title="GPS">●</span>
-                    <span class="status-knock" id="raceKnockIndicator" title="Knock">K</span>
                     <a href="/settings.html" class="btn-settings" title="Settings">⚙</a>
                 </div>
             </div>

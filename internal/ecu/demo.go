@@ -9,237 +9,140 @@ import (
 
 // DemoProvider generates simulated ECU data for development and testing.
 type DemoProvider struct {
-	mu      sync.Mutex
-	running bool
-	t       float64 // virtual time accumulator
-	stoich  float64
+	mu        sync.Mutex
+	connected bool
+	startTime time.Time
+	stoich    float64
 }
 
+// NewDemoProvider creates a demo ECU provider that generates realistic
+// simulated engine data using sine-wave patterns.
 func NewDemoProvider() *DemoProvider {
-	return &DemoProvider{stoich: 14.7}
+	return &DemoProvider{
+		stoich: 14.7,
+	}
 }
 
-func (d *DemoProvider) Name() string      { return "Demo (Simulated)" }
-func (d *DemoProvider) Connect() error    { d.running = true; return nil }
-func (d *DemoProvider) Close() error      { d.running = false; return nil }
-func (d *DemoProvider) IsConnected() bool { return d.running }
-
-// RequestRawData for Demo returns a dummy RawData — no real serial I/O.
-func (d *DemoProvider) RequestRawData() (*RawData, error) {
-	return &RawData{Tag: "demo"}, nil
-}
-
-// ParseRawData for Demo ignores the raw data and generates simulated values.
-func (d *DemoProvider) ParseRawData(raw *RawData) *DataFrame {
-	f, _ := d.RequestData()
-	return f
-}
-
-func (d *DemoProvider) RequestData() (*DataFrame, error) {
+func (d *DemoProvider) Connect() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-
-	d.t += 0.05 // ~20Hz tick
-
-	// Simulate RPM cycling between idle and revving
-	rpmBase := 850.0 + 4000.0*math.Sin(d.t*0.3)*math.Sin(d.t*0.3)
-	rpm := uint16(rpmBase + rand.Float64()*50)
-
-	mapVal := uint16(30 + (float64(rpm)-850)/(8000-850)*170) // 30-200 kPa
-	tps := (float64(rpm) - 850) / (8000 - 850) * 100
-	if tps < 0 {
-		tps = 0
-	}
-	if tps > 100 {
-		tps = 100
-	}
-
-	advance := int8(10 + (tps/100)*28)
-	coolant := 85.0 + rand.Float64()*5
-	iat := 30.0 + rand.Float64()*8
-
-	afr := 14.7 - (tps/100)*1.5 + rand.Float64()*0.4
-	if afr < 10 {
-		afr = 10
-	}
-	if afr > 18 {
-		afr = 18
-	}
-	battery := 13.8 + rand.Float64()*0.4
-
-	pw1 := 2.0 + tps/100*10
-	ve := uint8(40 + tps/100*55)
-
-	dutyCycle := 0.0
-	if rpm > 0 {
-		cycleMs := 60000.0 / float64(rpm) * 2
-		if cycleMs > 0 {
-			dutyCycle = (pw1 / cycleMs) * 100
-		}
-	}
-	if dutyCycle > 100 {
-		dutyCycle = 100
-	}
-
-	speed := uint16(tps / 100 * 220)
-
-	gear := uint8(0) // N
-	switch {
-	case speed > 180:
-		gear = 6
-	case speed > 140:
-		gear = 5
-	case speed > 100:
-		gear = 4
-	case speed > 60:
-		gear = 3
-	case speed > 30:
-		gear = 2
-	case speed > 5:
-		gear = 1
-	}
-
-	// Generate realistic sensor values
-	oilPressure := uint8(15 + tps/100*45) // 15-60 PSI
-	if rpm < 500 {
-		oilPressure = uint8(float64(rpm) / 500 * 15) // Drop at low RPM
-	}
-
-	f := &DataFrame{
-		// Core engine
-		Secl:     uint8(time.Now().Unix() % 256),
-		RPM:      rpm,
-		MAP:      mapVal,
-		TPS:      tps,
-		AFR:      afr,
-		Lambda:   afr / d.stoich,
-		Advance:  advance,
-		Advance1: advance,
-		Advance2: advance - 2,
-
-		// Temperatures
-		Coolant: coolant,
-		IAT:     iat,
-
-		// Fuel
-		PulseWidth1: pw1,
-		PulseWidth2: pw1,
-		PulseWidth3: pw1 * 0.95,
-		PulseWidth4: pw1 * 0.95,
-		VE1:         ve,
-		VE2:         ve - 5,
-		VECurr:      ve,
-		AFRTarget:   14.7,
-		DutyCycle:   dutyCycle,
-
-		// Corrections
-		GammaEnrich:    uint16(95 + rand.Float64()*10),
-		EGOCorrection:  uint8(95 + rand.Float64()*10),
-		AirCorrection:  uint8(98 + rand.Float64()*4),
-		WarmupEnrich:   100,
-		BatCorrection:  uint8(100 + rand.Float64()*5),
-		ASECurr:        0,
-		BaroCorrection: 100,
-		AccelEnrich:    uint8(rand.Float64() * 5),
-
-		// Electrical
-		BatteryVoltage: battery,
-		Dwell:          3.5,
-		DwellActual:    3.4,
-
-		// Boost
-		BoostTarget: uint8(mapVal / 2),
-		BoostDuty:   uint8(tps / 100 * 80),
-
-		// Speed / transmission
-		VSS:  speed,
-		Gear: gear,
-
-		// Pressures
-		FuelPressure: 43,
-		OilPressure:  oilPressure,
-		Baro:         101,
-
-		// VVT
-		VVT1Angle:  float64(int16(tps/100*40)) * 0.5,
-		VVT1Target: tps / 100 * 20,
-		VVT1Duty:   tps / 100 * 80,
-		VVT2Angle:  float64(int16(tps/100*30)) * 0.5,
-		VVT2Target: tps / 100 * 15,
-		VVT2Duty:   tps / 100 * 60,
-
-		// Flex fuel
-		FlexPct:     uint8(0),
-		FlexFuelCor: 100,
-		FlexIgnCor:  0,
-
-		// Exhaust
-		AFR2: afr + 0.2,
-		EMAP: uint16(100 + tps/100*50),
-
-		// Idle
-		IdleLoad:     uint8(25 + rand.Float64()*5),
-		CLIdleTarget: 850,
-
-		// Knock
-		KnockCount: 0,
-		KnockCor:   0,
-
-		// Status
-		Running:   true,
-		Cranking:  false,
-		ASE:       false,
-		Warmup:    false,
-		DFCOOn:    tps < 1 && rpm > 2000,
-		Sync:      true,
-		FanStatus: false,
-
-		// Load
-		FuelLoad: float64(mapVal),
-		IgnLoad:  float64(mapVal),
-		MAPdot:   int16(rand.Float64()*20 - 10),
-		RPMdot:   int16((float64(rpm) - rpmBase) * 2),
-
-		// Misc
-		LoopsPerSecond: 5000 + uint16(rand.Float64()*200),
-		FreeRAM:        4096 + uint16(rand.Float64()*512),
-		FanDuty:        0,
-		SDStatus:       0,
-		Errors:         0,
-		SyncLoss:       0,
-	}
-
-	// Fan control simulation
-	if coolant > 90 {
-		f.FanStatus = true
-		f.FanDuty = float64(coolant-85) / 20 * 100
-		if f.FanDuty > 100 {
-			f.FanDuty = 100
-		}
-	}
-
-	// WUE simulation when cold
-	if coolant < 60 {
-		f.Warmup = true
-		f.WarmupEnrich = uint8(100 + (60-coolant)*1.5)
-	}
-
-	// ASE simulation after startup
-	if d.t < 30 {
-		f.ASE = true
-		f.ASECurr = uint8(120 - d.t*2)
-	}
-
-	// Simulate occasional knock at high load/high RPM
-	if tps > 85 && rpm > 5000 && rand.Float64() < 0.08 {
-		f.KnockCount = uint8(1 + rand.Float64()*3)
-		f.KnockCor = uint8(2 + rand.Float64()*4)
-	}
-
-	// Simulate occasional high IAT under boost
-	if mapVal > 150 {
-		f.IAT = 55 + rand.Float64()*15
-	}
-
-	return f, nil
+	d.connected = true
+	d.startTime = time.Now()
+	return nil
 }
+
+func (d *DemoProvider) Close() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.connected = false
+	return nil
+}
+
+func (d *DemoProvider) IsConnected() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.connected
+}
+
+// RequestRawData returns a synthetic RawData with a pre-built 123-byte payload
+// that will parse correctly through parseGenericFixed.
+func (d *DemoProvider) RequestRawData() (*RawData, error) {
+	d.mu.Lock()
+	if !d.connected {
+		d.mu.Unlock()
+		return nil, nil
+	}
+	d.mu.Unlock()
+
+	t := time.Since(d.startTime).Seconds()
+
+	// Generate realistic oscillating values
+	rpmBase := 2500.0 + 2000.0*math.Sin(t*0.3)
+	rpm := uint16(math.Max(800, rpmBase+rand.Float64()*100))
+	mapVal := uint16(60 + 30*math.Sin(t*0.5))
+	tps := uint8(30 + 25*math.Sin(t*0.4))
+	iat := uint8(65)   // 25°C after -40 offset
+	clt := uint8(130)  // 90°C after -40 offset
+	batt := uint8(140) // 14.0V
+	afr := uint8(147)  // 14.7 AFR
+	advance := uint8(28 + int8(10*math.Sin(t*0.2)))
+	pw1 := uint16(3000 + 1500*math.Sin(t*0.3)) // µS
+
+	// Build a 123-byte payload matching the fixed layout
+	data := make([]byte, NewCANPacketSize)
+
+	data[0] = uint8(int(t) % 256)         // secl
+	data[1] = 0x01                        // status1: inj1 active
+	data[2] = 0x01                        // engine: running
+	data[3] = uint8(float64(pw1) / 100.0) // dwell approximation
+
+	data[4] = byte(mapVal & 0xFF) // MAP low
+	data[5] = byte(mapVal >> 8)   // MAP high
+	data[6] = iat                 // IAT
+	data[7] = clt                 // CLT
+	data[8] = 100                 // batCorrection %
+	data[9] = batt                // battery10
+	data[10] = afr                // O2/AFR
+	data[11] = 100                // egoCorrection
+	data[12] = 100                // iatCorrection
+	data[13] = 100                // wueCorrection
+
+	data[14] = byte(rpm & 0xFF)               // RPM low
+	data[15] = byte(rpm >> 8)                 // RPM high
+	data[16] = 0                              // TAEamount
+	data[17] = 100                            // corrections (GammaE)
+	data[18] = uint8(70 + 15*math.Sin(t*0.2)) // VE
+	data[19] = afr                            // afrTarget
+
+	data[20] = byte(pw1 & 0xFF) // PW1 low
+	data[21] = byte(pw1 >> 8)   // PW1 high
+	data[22] = 0                // tpsDOT
+	data[23] = advance          // advance
+	data[24] = tps              // TPS
+
+	data[25] = byte(5000 & 0xFF) // loopsPerSec low
+	data[26] = byte(5000 >> 8)   // loopsPerSec high
+	data[27] = byte(2048 & 0xFF) // freeRAM low
+	data[28] = byte(2048 >> 8)   // freeRAM high
+
+	data[29] = 50   // boostTarget
+	data[30] = 0    // boostDuty
+	data[31] = 0x04 // spark: synced
+	data[40] = 101  // baro (kPa)
+
+	// Enhanced bytes 75+
+	data[75] = 0                // launchCorrection
+	data[76] = byte(pw1 & 0xFF) // PW2 low
+	data[77] = byte(pw1 >> 8)   // PW2 high
+	data[82] = 0                // status3
+	data[83] = 0                // engineProtect
+	data[91] = 0                // CLIdleTarget
+	data[98] = 100              // baroCorrection
+	data[99] = 0                // ASEValue
+
+	speed := uint16(60 + 30*math.Sin(t*0.15))
+	data[100] = byte(speed & 0xFF) // VSS low
+	data[101] = byte(speed >> 8)   // VSS high
+	data[102] = 3                  // gear
+	data[111] = 75                 // fuelTemp (35°C + 40)
+	data[113] = data[18]           // VE1
+	data[115] = advance            // advance1
+	data[121] = 0                  // fanDuty
+
+	return &RawData{
+		Payload:  data,
+		Command:  'n',
+		Protocol: ProtoGenericFixed,
+	}, nil
+}
+
+// ParseRawData parses the demo data through the real parser.
+func (d *DemoProvider) ParseRawData(raw *RawData) *DataFrame {
+	if raw == nil {
+		return nil
+	}
+	return parseGenericFixed(raw.Payload, d.stoich)
+}
+
+// Compile-time interface check.
+var _ Provider = (*DemoProvider)(nil)

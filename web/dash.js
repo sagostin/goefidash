@@ -63,11 +63,8 @@
 
         // Race
         if ($('raceSpeedUnit')) $('raceSpeedUnit').textContent = speedLabel;
-        if ($('raceBoostUnit')) $('raceBoostUnit').textContent = pLabel;
-        if ($('raceOilUnit')) $('raceOilUnit').textContent = pLabel;
-        if ($('raceCltUnit')) $('raceCltUnit').textContent = tLabel;
-        if ($('raceIatUnit')) $('raceIatUnit').textContent = tLabel;
         if ($('raceOdoDistUnit')) $('raceOdoDistUnit').textContent = distUnit;
+        if ($('raceOdoTripUnit')) $('raceOdoTripUnit').textContent = distUnit;
 
         // Minimal
         if ($('minSpeedUnit')) $('minSpeedUnit').textContent = speedLabel;
@@ -319,41 +316,10 @@
             }
 
             // ================================================================
-            // UPDATE RACE LAYOUT
+            // UPDATE RACE LAYOUT (simplified — speed + odo only)
             // ================================================================
             else if (activeLayout === 'race') {
-                $('raceRpmValue').textContent = rpmInt;
-                const rpmMax = t.rpmMax || 8000;
-                $('raceRpmBar').style.width = Math.min(smoothRPM / rpmMax * 100, 100) + '%';
-
-                $('raceSpeedValue').textContent = displaySpeed;
-                $('raceGearDisplay').textContent = gearText;
-                $('raceHpValue').textContent = hpRound;
-
-                // Engine status label
-                const raceStatusEl = $('raceEngineStatus');
-                raceStatusEl.textContent = engineStatusText;
-                raceStatusEl.className = 'race-info-label' + (engineStatusClass === 'running' ? ' running' : engineStatusClass === 'warning' ? ' hot' : '');
-
-                // Values
-                $('raceAfrValue').textContent = ecu.afr.toFixed(1);
-                setCardState('raceAfrCard', afrState);
-
-                $('raceBoostValue').textContent = boostDisp;
-                setCardState('raceBoostCard', '');
-
-                $('raceOilValue').textContent = Math.round(oilVal);
-                setCardState('raceOilCard', oilState);
-
-                $('raceCltValue').textContent = Math.round(D.displayTemp(cltC));
-                setCardState('raceCltCard', cltState);
-
-                $('raceIatValue').textContent = Math.round(D.displayTemp(iatC));
-                setCardState('raceIatCard', iatState);
-
-                $('raceKnockValue').textContent = knockRet + '°';
-                setCardState('raceKnockCard', knockState);
-                $('raceKnockIndicator').classList.toggle('active', engineRunning && (knockRet > 0 || knockCnt > 0));
+                // Speed is handled below in the shared speed section
             }
 
             // ================================================================
@@ -408,11 +374,7 @@
                 $('sweepEngineStatus').className = 'sweep-engine-status';
                 $('sweepKnockIndicator').classList.remove('active');
             } else if (activeLayout === 'race') {
-                $('raceRpmValue').textContent = '0';
-                $('raceRpmBar').style.width = '0%';
-                $('raceEngineStatus').textContent = 'OFF';
-                $('raceEngineStatus').className = 'race-info-label';
-                $('raceKnockIndicator').classList.remove('active');
+                // Race layout has no ECU elements to clear
             } else if (activeLayout === 'minimal') {
                 $('minRpmValue').textContent = '0';
                 $('minEngineStatus').textContent = 'OFF';
@@ -430,9 +392,21 @@
         requestAnimationFrame(updateDisplay);
     }
 
-    // ---- Trip Reset ----
+    // ---- Trip Reset (classic) ----
     if ($('btnResetTrip')) {
         $('btnResetTrip').addEventListener('click', () => {
+            fetch('/api/odo/reset-trip', { method: 'POST' })
+                .then(() => {
+                    if ($('odoTrip')) $('odoTrip').textContent = '0.0';
+                    if ($('raceOdoTrip')) $('raceOdoTrip').textContent = '0.0';
+                })
+                .catch(() => { });
+        });
+    }
+
+    // ---- Trip Reset (race) ----
+    if ($('btnResetTripRace')) {
+        $('btnResetTripRace').addEventListener('click', () => {
             fetch('/api/odo/reset-trip', { method: 'POST' })
                 .then(() => {
                     if ($('odoTrip')) $('odoTrip').textContent = '0.0';

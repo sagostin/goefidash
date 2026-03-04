@@ -1,6 +1,8 @@
-# Speeduino Dash
+# goefidash
 
-A realtime automotive dashboard for **Speeduino** ECUs, built in Go and served as a web app. Designed for **Raspberry Pi** with touchscreen in Chromium kiosk mode — but runs anywhere with a browser.
+A GPS-based automotive dashboard built in Go, served as a web app. Designed for **Raspberry Pi** with touchscreen in Chromium kiosk mode — but runs anywhere with a browser.
+
+Currently provides **GPS speed + odometer** with a clean, full-screen race display. ECU support (Speeduino, OBD-II, etc.) is planned for the future and can be optionally enabled.
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)
@@ -11,44 +13,32 @@ A realtime automotive dashboard for **Speeduino** ECUs, built in Go and served a
 
 ## Why This Exists
 
-This project was born out of wanting a **system-agnostic, simple workaround** for an automotive dashboard that uses common, open software — no proprietary displays, no locked-down ecosystems. Just a Raspberry Pi, a browser, and a serial connection to your ECU.
+This project was born out of wanting a **system-agnostic, simple workaround** for an automotive dashboard that uses common, open software — no proprietary displays, no locked-down ecosystems. Just a Raspberry Pi, a browser, and a GPS module.
 
-I originally tried **TSDash by EFIAnalytics**, but found it wasn't reliable enough for my use case. V8 Creations also makes the [**SDC dash software**](https://sdc.v8creations.com/products/products.html), which I tried as well — it works, but has licensing and designing custom themes isn't exactly straightforward. Their support went above and beyond though, making multiple changes to try to accommodate the issues I was having — ever grateful for that. Ultimately I built this as a lightweight, fully open-source alternative.
-
-The hardware side uses the excellent [**V8 Creations SDC I/O Hat**](https://www.v8creations.com/sdc/19-sdc-io-hat-serial-or-serial-can.html) for clean serial/CAN connectivity to the Speeduino. **Highly recommend V8 Creations** — great hardware and great people.
+The default display is a **big, clean speedometer** with odometer and trip distance — exactly what you need when driving. Trip resets on every boot so each session starts fresh.
 
 ---
 
 ## Features
 
-### ECU & Serial
-- **Speeduino ECU support** — reads realtime data via the secondary serial protocol (`n`/`A` commands)
-- **Command auto-detection** — tries enhanced `n` command first, falls back to legacy `A` automatically
-- **Exponential retry** — serial connections retry with backoff (1s → 60s cap)
-
 ### GPS & Speed
 - **GPS integration** — standard NMEA 0183 (u-blox NEO-M8N recommended, ~$20, 10 Hz)
-- **GPS-only mode** — speed and odometer work even without an ECU connected
-- **Unified speed source** — prioritizes ECU VSS, falls back to GPS speed
-- **Persistent odometer** — total + trip distance tracked via GPS haversine, saved to disk
-- **Trip odometer reset** — reset trip distance from the dashboard UI
+- **Giant speedometer display** — full-screen speed, designed for in-car readability
+- **Persistent odometer** — total distance tracked via GPS haversine, saved to disk every 30s
+- **Trip odometer** — resets on every boot, manual reset from dashboard UI
+- **Async GPS polling** — GPS runs in its own goroutine; UI never blocks on serial I/O
 
 ### Dashboard & Display
-- **Multiple layouts** — Classic (cards + arc tach), Sweep (cinematic half-circle), Race (data-dense grid), Minimal (large RPM + speed only)
-- **Canvas tachometer** — smooth animated RPM arc with configurable redline
-- **Warning system** — fullscreen overlays for critical conditions (high CLT, low oil pressure, knock, lean AFR, etc.)
+- **Race layout (default)** — full-screen speed + bottom ODO/TRIP bar
+- **Classic layout** — card-grid with RPM, speed, engine gauges (for ECU mode)
+- **Sweep layout** — cinematic arc tachometer (for ECU mode)
+- **Minimal layout** — ultra-clean speed + RPM (for ECU mode)
 - **Dark automotive theme** — purpose-built for in-car readability
 
-### Drivetrain & Calculations
-- **Gear detection** — auto-detected from RPM/speed ratio, or manual gear ratio config
-- **Estimated HP** — road-load physics model using mass, drag coefficient, frontal area, and rolling resistance
-- **Peak HP tracking** — tracks and displays peak estimated horsepower with reset
-
 ### Configuration
-- **Web settings page** — browser-based configuration for serial ports, units, thresholds, drivetrain, and vehicle physics
+- **Web settings page** — browser-based configuration for serial ports, units, and display
 - **Layered config** — environment variables → `.env` file → `config.yaml` → built-in defaults
-- **Unit conversions** — °C/°F, kPa/PSI/bar, km/h/MPH, AFR/Lambda configurable at runtime
-- **Configurable warning thresholds** — RPM, CLT, IAT, AFR (lean/rich), oil pressure, battery voltage, knock retard
+- **Unit conversions** — km/h ↔ MPH, km ↔ miles configurable at runtime
 
 ### Data Logging
 - **CSV data logger** — configurable interval (default 10 Hz) with automatic file rotation
@@ -56,14 +46,13 @@ The hardware side uses the excellent [**V8 Creations SDC I/O Hat**](https://www.
 ### Deployment
 - **Kiosk mode** — auto-launch Chromium fullscreen on Raspberry Pi boot with branded splash screen
 - **systemd service** — managed lifecycle with auto-restart
-- **udev rules** — stable `/dev/ttySpeeduino` and `/dev/ttyGPS` symlinks
+- **udev rules** — stable `/dev/ttyGPS` symlink
 - **CI/CD** — GitHub Actions builds and publishes release archives on tag push
 
----
-
-## Screenshots
-
-> Screenshots coming soon — the dashboard supports four layouts: **Classic**, **Sweep**, **Race**, and **Minimal**. Run `make run` to see them live in demo mode.
+### ECU Support (Optional, Disabled by Default)
+- **Speeduino ECU** — reads realtime data via secondary serial protocol (set `ECU_TYPE=speeduino`)
+- **Demo mode** — simulated ECU data for development (set `ECU_TYPE=demo`)
+- Additional ECU providers (OBD-II, RuSEFI, Megasquirt) planned for the future
 
 ---
 
@@ -75,18 +64,17 @@ git clone https://github.com/shaunagostinho/speeduino-dash.git
 cd goefidash
 make              # or: go build -o goefidash ./cmd/goefidash/
 
-# Run in demo mode (simulated ECU + GPS data)
+# Run in demo mode (simulated GPS data)
 make run          # or: ./goefidash --demo --listen :8080
 
 # Open http://localhost:8080 in your browser
-# Click the ⚙ gear icon to access settings and switch layouts
 ```
 
 ### Command-Line Flags
 
 | Flag | Description |
 |------|-------------|
-| `--demo` | Run with simulated ECU + GPS data (no hardware needed) |
+| `--demo` | Run with simulated GPS data (no hardware needed) |
 | `--listen :8080` | Set the HTTP listen address |
 | `--config /path/to/config.yaml` | Load config from a specific path |
 
@@ -100,18 +88,11 @@ make deploy PI=pi@192.168.1.50
 ```
 
 This builds the binary for ARMv7, SCPs it along with all deploy scripts to the Pi, then drops you into an interactive SSH session that walks you through:
-- **ECU connection** — Pi UART (`/dev/ttyAMA0`), USB serial (auto-detect), or custom path
 - **GPS module** — USB GPS with auto-generated udev rules, or disabled
-- **Display units** — temperature, speed, pressure, layout
+- **Display units** — speed, temperature, layout
 - **Kiosk mode** — optional Plymouth splash + auto-login + Chromium fullscreen
 
-If you're already on the Pi, run the setup directly:
-
-```bash
-sudo bash deploy/rpi-setup.sh
-```
-
-> 📖 See [**Raspberry Pi Setup Guide**](docs/RASPBERRY_PI_SETUP.md) for the complete walkthrough — from bare SD card to running dashboard.
+> 📖 See [**Raspberry Pi Setup Guide**](docs/RASPBERRY_PI_SETUP.md) for the complete walkthrough.
 
 ---
 
@@ -128,95 +109,55 @@ Configuration loads in this priority order:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ECU_TYPE` | `demo` | `speeduino` or `demo` |
-| `ECU_PORT` | `/dev/ttySpeeduino` | ECU serial port path |
-| `ECU_BAUD` | `115200` | ECU baud rate |
-| `ECU_STOICH` | `14.7` | Stoichiometric ratio (14.7 gas, 9.0 E85) |
+| `ECU_TYPE` | `disabled` | `disabled`, `speeduino`, or `demo` |
 | `GPS_TYPE` | `demo` | `nmea`, `demo`, or `disabled` |
 | `GPS_PORT` | `/dev/ttyGPS` | GPS serial port path |
 | `GPS_BAUD` | `9600` | GPS baud rate |
 | `LISTEN_ADDR` | `:8080` | HTTP listen address |
-| `TEMP_UNIT` | `C` | `C` or `F` |
-| `PRESSURE_UNIT` | `psi` | `kpa`, `psi`, or `bar` |
 | `SPEED_UNIT` | `kph` | `kph` or `mph` |
 | `LOG_ENABLED` | `false` | `true` to enable CSV data logging |
-| `LOG_PATH` | `/var/log/speeduino-dash` | Directory for log CSV files |
-| `LOG_INTERVAL_MS` | `100` | Min ms between log entries (100 = 10 Hz) |
 
-Copy `.env.example` to `.env` and uncomment what you need. See [`config.yaml.example`](config.yaml.example) for the full YAML config with drivetrain, vehicle physics, and threshold settings.
-
-### udev Rules
-
-The install script creates `/etc/udev/rules.d/99-speeduino.rules`. Edit it to match your USB-serial adapters:
-
-```bash
-# Find your device IDs
-udevadm info -a -n /dev/ttyUSB0 | grep -E "idVendor|idProduct"
-
-# Example rule
-ACTION=="add", SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="ttySpeeduino"
-```
+See [`config.yaml.example`](config.yaml.example) for the full YAML config.
 
 ---
 
 ## Architecture
 
 ```
-cmd/speeduino-dash/         Entry point, embed, CLI flags, retry logic
+cmd/goefidash/         Entry point, CLI flags, retry logic
 internal/
   ecu/
-    provider.go             ECU Provider interface + DataFrame (70+ channels)
-    speeduino.go            Speeduino serial driver (secondary serial protocol)
-    demo.go                 Simulated ECU for testing
+    provider.go        ECU Provider interface + DataFrame
+    speeduino.go       Speeduino serial driver (optional)
+    demo.go            Simulated ECU for testing
   gps/
-    provider.go             GPS Provider interface + Data struct
-    nmea.go                 NMEA 0183 parser + demo GPS
+    provider.go        GPS Provider interface + Data struct
+    nmea.go            NMEA 0183 parser + demo GPS
   logger/
-    logger.go               CSV data logger with configurable interval + file rotation
+    logger.go          CSV data logger with configurable interval
   server/
-    server.go               WebSocket hub, polling loops, odometer, speed source logic
-    config.go               Layered config system (env → .env → YAML → defaults)
+    server.go          WebSocket hub, async GPS polling, odometer, speed source
+    config.go          Layered config system (env → .env → YAML → defaults)
 web/
-    index.html              Dashboard — all four layouts (Classic, Sweep, Race, Minimal)
-    style.css               Dark automotive theme + layout-specific styles
-    dash.js                 Display logic, layout switching, warnings, tach rendering
-    shared.js               Shared state, WebSocket client, unit conversions, gear detection, HP calc
-    settings.html           Web-based configuration page
-    settings.js             Settings logic, gear auto-learn, live preview
-    settings.css            Settings page styles
-deploy-pi.sh                Remote deploy (build → scp → SSH setup)
-deploy/
-    rpi-setup.sh            Interactive Raspberry Pi setup (runs on Pi)
-    install.sh              Non-interactive Raspberry Pi installer
-    setup-kiosk.sh          Boot splash + auto-login + Chromium service
-    speeduino-dash.service  systemd unit file
-    kiosk.sh                Chromium kiosk launcher (legacy)
-    logrotate-speeduino-dash  Log rotation config
-    splash.png              Boot splash image
-    plymouth/               Plymouth theme files
-docs/
-    RASPBERRY_PI_SETUP.md               Complete Pi setup guide (SD card → running dash)
-    SPEEDUINO_SECONDARY_SERIAL_PROTOCOL.md  Secondary serial plain-byte protocol spec
-    CONTRIBUTING.md                     Contributor guide
-Makefile                    Build, cross-compile, install, test targets
-ROADMAP.md                  Phased feature roadmap
-CHANGELOG.md                Release history
+    index.html         Dashboard — Race (default), Classic, Sweep, Minimal layouts
+    style.css          Dark automotive theme
+    dash.js            Display logic, layout switching, speed rendering
+    shared.js          WebSocket client, unit conversions
+    settings.html      Web-based configuration page
+deploy-pi.sh           Remote deploy (build → scp → SSH setup)
+deploy/                Raspberry Pi setup scripts, systemd, kiosk
+docs/                  Setup guides, protocol docs
 ```
 
-### ECU Provider Interface
+### Data Flow
 
-Adding a new ECU is as simple as implementing the `Provider` interface:
-
-```go
-type Provider interface {
-    Name() string
-    Connect() error
-    Close() error
-    RequestData() (*DataFrame, error)
-}
+```
+GPS serial → goroutine (10Hz) → lastGPS (mutex) → broadcast ticker → WebSocket → browser
+                                                  ↗
+                              odometer (haversine) → periodic save (30s)
 ```
 
-The `DataFrame` struct exposes **70+ channels** including RPM, MAP, TPS, AFR, temperatures, pulse widths, VE, boost, VVT, flex fuel, knock, pressures, and status flags. See [`internal/ecu/provider.go`](internal/ecu/provider.go) for the full field list.
+GPS polling is fully async — runs in its own goroutine, never blocks the WebSocket broadcast or UI.
 
 ---
 
@@ -224,14 +165,9 @@ The `DataFrame` struct exposes **70+ channels** including RPM, MAP, TPS, AFR, te
 
 | Component | Recommendation | Cost |
 |-----------|---------------|------|
-| ECU | Speeduino UA4C | — |
-| I/O Hat | [V8 Creations SDC I/O Hat](https://www.v8creations.com/sdc/19-sdc-io-hat-serial-or-serial-can.html) (Serial or Serial+CAN) | — |
 | GPS | u-blox NEO-M8N (UART, 10 Hz) | ~$20 |
 | SBC | Raspberry Pi 3B+/4/5 | ~$35-80 |
 | Display | 7" or 10" touchscreen | ~$35-60 |
-| USB-Serial | CH340 or FTDI adapter (if not using I/O Hat) | ~$5 |
-
-> **💡 Recommended:** The [V8 Creations SDC I/O Hat](https://www.v8creations.com/sdc/19-sdc-io-hat-serial-or-serial-can.html) provides a clean, purpose-built serial/CAN connection from the Pi directly to the Speeduino — no USB adapters needed.
 
 ---
 
@@ -240,7 +176,6 @@ The `DataFrame` struct exposes **70+ channels** including RPM, MAP, TPS, AFR, te
 | Document | Description |
 |----------|-------------|
 | [Raspberry Pi Setup Guide](docs/RASPBERRY_PI_SETUP.md) | Complete guide from bare SD card to running dashboard |
-| [Secondary Serial Protocol](docs/SPEEDUINO_SECONDARY_SERIAL_PROTOCOL.md) | Plain-byte protocol for secondary serial port |
 | [Contributing Guide](docs/CONTRIBUTING.md) | Dev setup, project structure, how to contribute |
 | [Roadmap](ROADMAP.md) | Phased feature roadmap |
 | [Changelog](CHANGELOG.md) | Release history |
@@ -249,7 +184,7 @@ The `DataFrame` struct exposes **70+ channels** including RPM, MAP, TPS, AFR, te
 
 ## Contributing
 
-Contributions are welcome! See the [**Contributing Guide**](docs/CONTRIBUTING.md) for dev setup instructions, project structure overview, and how to add new ECU providers or dashboard layouts.
+Contributions are welcome! See the [**Contributing Guide**](docs/CONTRIBUTING.md) for dev setup instructions and project structure overview.
 
 ---
 

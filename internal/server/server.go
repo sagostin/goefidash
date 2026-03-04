@@ -535,6 +535,7 @@ func haversineKm(lat1, lon1, lat2, lon2 float64) float64 {
 }
 
 // loadOdometer reads persisted odometer values from disk.
+// Trip is intentionally NOT restored — it resets to 0 on every boot.
 func (s *Server) loadOdometer() {
 	data, err := os.ReadFile(s.odoPath)
 	if err != nil {
@@ -547,12 +548,9 @@ func (s *Server) loadOdometer() {
 			s.odoTotal = v
 		}
 	}
-	if len(parts) >= 2 {
-		if v, err := strconv.ParseFloat(parts[1], 64); err == nil {
-			s.odoTrip = v
-		}
-	}
-	log.Printf("[odo] loaded: total=%.1f km, trip=%.1f km", s.odoTotal, s.odoTrip)
+	// Trip always starts at 0 on boot
+	s.odoTrip = 0
+	log.Printf("[odo] loaded: total=%.1f km (trip reset to 0)", s.odoTotal)
 }
 
 // saveOdometer persists odometer values to disk.

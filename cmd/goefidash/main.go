@@ -52,21 +52,26 @@ func main() {
 	switch cfg.ECU.Type {
 	case "speeduino":
 		ecuProv = ecu.NewSpeeduino(ecu.SpeeduinoConfig{
-			Protocol: cfg.ECU.Protocol,
-			PortPath: cfg.ECU.PortPath,
-			BaudRate: cfg.ECU.BaudRate,
-			CanID:    byte(cfg.ECU.CanID),
-			Stoich:   cfg.ECU.Stoich,
+			PortPath:    cfg.ECU.PortPath,
+			BaudRate:    cfg.ECU.BaudRate,
+			CanID:       byte(cfg.ECU.CanID),
+			Stoich:      cfg.ECU.Stoich,
+			SerialDebug: cfg.ECU.SerialDebug,
 		})
+	case "disabled":
+		ecuProv = nil
+		log.Println("[ECU] disabled by configuration")
 	default:
 		ecuProv = ecu.NewDemoProvider()
 	}
 
 	// Try initial ECU connect (single attempt — server.go serial goroutine handles retry)
-	if err := ecuProv.Connect(); err != nil {
-		log.Printf("[ECU] initial connect failed: %v (serial goroutine will retry)", err)
-	} else {
-		log.Printf("[ECU] connected successfully")
+	if ecuProv != nil {
+		if err := ecuProv.Connect(); err != nil {
+			log.Printf("[ECU] initial connect failed: %v (serial goroutine will retry)", err)
+		} else {
+			log.Printf("[ECU] connected successfully")
+		}
 	}
 
 	// Initialize GPS provider
